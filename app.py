@@ -92,33 +92,49 @@ def get_video_title(video_id):
 # Функция для получения транскрипции видео
 def get_video_transcript(video_id):
     try:
-        # Пробуем получить транскрипцию на разных языках
-        try:
-            # Сначала пробуем получить транскрипцию без указания языка (автоматический выбор)
-            transcript = YouTubeTranscriptApi.get_transcript(video_id)
-            transcript_text = ' '.join([item['text'] for item in transcript])
-            return transcript_text
-        except:
-            # Если не получилось, пробуем получить список доступных транскрипций
-            try:
-                transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-                
-                # Пробуем получить первую доступную транскрипцию
-                for transcript in transcript_list:
-                    try:
-                        fetched_transcript = transcript.fetch()
-                        transcript_text = ' '.join([item['text'] for item in fetched_transcript])
-                        return transcript_text
-                    except:
-                        continue
-                        
-                # Если ничего не получилось
-                return "Транскрипция недоступна для этого видео"
-            except:
-                return "Транскрипция недоступна для этого видео"
-                
+        from youtube_transcript_api._api import YouTubeTranscriptApi as API
+        
+        # Получаем список транскрипций для видео
+        transcript_list = API.list_transcripts(video_id)
+        
+        # Пытаемся получить транскрипцию
+        transcript = None
+        
+        # Сначала пробуем найти английскую транскрипцию (оригинальную или автогенерированную)
+        for t in transcript_list:
+            if 'en' in t.language_code.lower():
+                transcript = t
+                break
+        
+        # Если не нашли английскую, берем первую доступную
+        if not transcript:
+            for t in transcript_list:
+                transcript = t
+                break
+        
+        if transcript:
+            # Получаем данные транскрипции
+            transcript_data = transcript.fetch()
+            # Собираем весь текст
+            full_text = ' '.join([entry['text'] for entry in transcript_data])
+            return full_text
+        else:
+            return "Транскрипция недоступна для этого видео"
+            
     except Exception as e:
-        return f"Ошибка: {str(e)[:100]}"
+        # Пробуем альтернативный метод
+        try:
+            from youtube_transcript_api import YouTubeTranscriptApi
+            # Используем метод get_transcripts (множественное число)
+            transcripts = YouTubeTranscriptApi.get_transcripts([video_id], languages=['en', 'en-US'])
+            if video_id in transcripts:
+                transcript_data = transcripts[video_id]
+                full_text = ' '.join([entry['text'] for entry in transcript_data])
+                return full_text
+        except:
+            pass
+        
+        return f"Не удалось получить транскрипцию: {str(e)[:200]}"
 
 # Функция для получения текста с превью через Claude API
 def get_thumbnail_text(video_id):
@@ -287,7 +303,7 @@ with data_container:
             "**📝 Заголовок видео**",
             value=current_title,
             height=100,
-            disabled=True,
+            disabled=False,  # Делаем поле редактируемым
             key=f"title_display_{hash(current_title)}"  # Уникальный ключ на основе контента
         )
     
@@ -297,7 +313,7 @@ with data_container:
             "**🖼️ Текст с превью**",
             value=current_thumbnail,
             height=100,
-            disabled=True,
+            disabled=False,  # Делаем поле редактируемым
             key=f"thumbnail_display_{hash(current_thumbnail)}"
         )
     
@@ -307,7 +323,7 @@ with data_container:
             "**📄 Транскрипция видео референса**",
             value=current_transcript,
             height=100,
-            disabled=True,
+            disabled=False,  # Делаем поле редактируемым
             key=f"transcript_display_{hash(current_transcript)}"
         )
 
