@@ -165,10 +165,17 @@ def get_thumbnail_text(video_id):
             prompt_text = "Опишите текст, который вы видите на этом изображении превью YouTube видео. Выпишите весь текст точно как он написан."
         
         # Инициализируем клиент Claude
-        try:
-            client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
-        except:
-            return "API ключ Anthropic не найден"
+        if "ANTHROPIC_API_KEY" not in st.secrets:
+            # Отладочная информация о доступных секретах
+            available_keys = list(st.secrets.keys()) if hasattr(st.secrets, 'keys') else []
+            return f"API ключ Anthropic не найден. Доступные ключи: {available_keys}"
+        
+        # Получаем ключ и проверяем его формат
+        api_key = st.secrets["ANTHROPIC_API_KEY"]
+        if not api_key or not api_key.startswith("sk-"):
+            return f"Неверный формат API ключа Anthropic (должен начинаться с 'sk-')"
+        
+        client = anthropic.Anthropic(api_key=api_key)
         
         # Отправляем запрос к Claude
         message = client.messages.create(
@@ -197,7 +204,11 @@ def get_thumbnail_text(video_id):
         
         return message.content[0].text
     except Exception as e:
-        return f"Ошибка: {str(e)[:100]}"
+        # Более подробная информация об ошибке
+        error_msg = f"Ошибка при обработке превью: {str(e)}"
+        if "api_key" in str(e).lower():
+            error_msg = "Проблема с API ключом Anthropic. Проверьте правильность ключа в секретах."
+        return error_msg
 
 # Функция для выбора модели Claude
 def get_claude_model():
@@ -229,6 +240,16 @@ with st.sidebar:
         st.write(f"- video_title length: {len(st.session_state.get('video_title', ''))}")
         st.write(f"- thumbnail_text length: {len(st.session_state.get('thumbnail_text', ''))}")
         st.write(f"- transcript length: {len(st.session_state.get('transcript', ''))}")
+        
+        st.write("\nSecrets Status:")
+        try:
+            st.write(f"- Secrets available: {hasattr(st, 'secrets')}")
+            if hasattr(st, 'secrets'):
+                st.write(f"- Total secrets: {len(list(st.secrets.keys()))}")
+                st.write(f"- ANTHROPIC_API_KEY: {'✅ Found' if 'ANTHROPIC_API_KEY' in st.secrets else '❌ Not found'}")
+                st.write(f"- YouTube keys: {sum(1 for k in st.secrets.keys() if k.startswith('YOUTUBE_API_KEY_'))}")
+        except Exception as e:
+            st.write(f"- Error checking secrets: {e}")
         
         if st.button("🔄 Очистить данные"):
             st.session_state.video_id = None
