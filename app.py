@@ -106,8 +106,55 @@ def get_video_transcript(video_id):
         # Создаем экземпляр API
         api = YouTubeTranscriptApi()
         
-        # Получаем транскрипцию
-        transcript_data = api.fetch(video_id)
+        # Пробуем получить транскрипцию на разных языках
+        transcript_data = None
+        
+        # Список языков для попытки
+        languages_to_try = [
+            None,  # Сначала пробуем без указания языка (берет первую доступную)
+            ['en'],  # Английский
+            ['es'],  # Испанский  
+            ['ru'],  # Русский
+            ['fr'],  # Французский
+            ['de'],  # Немецкий
+            ['pt'],  # Португальский
+            ['it'],  # Итальянский
+            ['ja'],  # Японский
+            ['ko'],  # Корейский
+            ['zh'],  # Китайский
+        ]
+        
+        # Пробуем получить транскрипцию для каждого языка
+        for lang in languages_to_try:
+            try:
+                if lang is None:
+                    # Пробуем без указания языка - должно взять любую доступную
+                    transcript_data = api.fetch(video_id)
+                else:
+                    # Пробуем с конкретным языком
+                    transcript_data = api.fetch(video_id, languages=lang)
+                
+                if transcript_data:
+                    break  # Если успешно получили, выходим из цикла
+            except:
+                continue  # Если не получилось, пробуем следующий язык
+        
+        # Если ничего не получилось через api.fetch, пробуем альтернативный способ
+        if not transcript_data:
+            try:
+                # Получаем список всех доступных транскрипций и берем первую
+                from youtube_transcript_api._api import TranscriptListFetcher
+                fetcher = TranscriptListFetcher(video_id)
+                transcript_list = fetcher.fetch()
+                if transcript_list:
+                    # Берем первую доступную транскрипцию
+                    first_transcript = list(transcript_list.values())[0]
+                    if first_transcript:
+                        # Извлекаем язык из первой транскрипции
+                        lang_code = first_transcript.get('language', 'en')
+                        transcript_data = api.fetch(video_id, languages=[lang_code])
+            except:
+                pass
         
         # Собираем текст транскрипции в двух форматах
         if transcript_data:
