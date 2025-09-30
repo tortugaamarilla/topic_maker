@@ -96,16 +96,29 @@ def get_video_title(video_id):
 # Функция для получения транскрипции видео
 def get_video_transcript(video_id):
     try:
-        # Создаем экземпляр API
-        api = YouTubeTranscriptApi()
+        # Импортируем правильные функции из библиотеки
+        from youtube_transcript_api import YouTubeTranscriptApi
         
-        # Получаем транскрипцию напрямую
-        transcript_data = api.fetch(video_id)
+        # Получаем список транскрипций
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        
+        # Получаем первую доступную транскрипцию
+        transcript = None
+        for t in transcript_list:
+            transcript = t
+            break
+        
+        if transcript:
+            # Получаем данные транскрипции
+            transcript_data = transcript.fetch()
+        else:
+            # Если список пустой, пробуем прямой метод
+            transcript_data = []
         
         # Собираем текст транскрипции в двух форматах
         if transcript_data:
             # Версия без временных меток
-            full_text = '\n'.join([str(entry.text) if hasattr(entry, 'text') else str(entry.get('text', '')) for entry in transcript_data])
+            full_text = '\n'.join([str(entry.get('text', '')) for entry in transcript_data])
             
             # Версия с временными метками
             def format_time(seconds):
@@ -120,8 +133,8 @@ def get_video_transcript(video_id):
             
             text_with_timestamps = []
             for entry in transcript_data:
-                start_time = entry.start if hasattr(entry, 'start') else entry.get('start', 0)
-                text = str(entry.text) if hasattr(entry, 'text') else str(entry.get('text', ''))
+                start_time = entry.get('start', 0)
+                text = str(entry.get('text', ''))
                 text_with_timestamps.append(f"[{format_time(start_time)}] {text}")
             
             full_text_with_timestamps = '\n'.join(text_with_timestamps)
@@ -175,7 +188,8 @@ def get_thumbnail_text(video_id):
         if not api_key or not api_key.startswith("sk-"):
             return f"Неверный формат API ключа Anthropic (должен начинаться с 'sk-')"
         
-        client = anthropic.Anthropic(api_key=api_key)
+        # Создаем клиент без дополнительных параметров
+        client = anthropic.Anthropic(api_key=str(api_key))
         
         # Отправляем запрос к Claude
         message = client.messages.create(
