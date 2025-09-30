@@ -96,29 +96,19 @@ def get_video_title(video_id):
 # Функция для получения транскрипции видео
 def get_video_transcript(video_id):
     try:
-        # Импортируем правильные функции из библиотеки
-        from youtube_transcript_api import YouTubeTranscriptApi
+        # Создаем экземпляр API
+        api = YouTubeTranscriptApi()
         
-        # Получаем список транскрипций
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        
-        # Получаем первую доступную транскрипцию
-        transcript = None
-        for t in transcript_list:
-            transcript = t
-            break
-        
-        if transcript:
-            # Получаем данные транскрипции
-            transcript_data = transcript.fetch()
-        else:
-            # Если список пустой, пробуем прямой метод
-            transcript_data = []
+        # Получаем транскрипцию
+        transcript_data = api.fetch(video_id)
         
         # Собираем текст транскрипции в двух форматах
         if transcript_data:
+            # transcript_data - это объект FetchedTranscript, который можно итерировать
+            # Каждый элемент имеет атрибуты: text, start, duration
+            
             # Версия без временных меток
-            full_text = '\n'.join([str(entry.get('text', '')) for entry in transcript_data])
+            full_text = '\n'.join([str(entry.text) for entry in transcript_data])
             
             # Версия с временными метками
             def format_time(seconds):
@@ -133,8 +123,8 @@ def get_video_transcript(video_id):
             
             text_with_timestamps = []
             for entry in transcript_data:
-                start_time = entry.get('start', 0)
-                text = str(entry.get('text', ''))
+                start_time = entry.start
+                text = str(entry.text)
                 text_with_timestamps.append(f"[{format_time(start_time)}] {text}")
             
             full_text_with_timestamps = '\n'.join(text_with_timestamps)
@@ -144,8 +134,13 @@ def get_video_transcript(video_id):
             return "Транскрипция недоступна для этого видео", "Транскрипция недоступна для этого видео"
             
     except Exception as e:
-        error_msg = f"Не удалось получить транскрипцию: {str(e)[:200]}"
-        return error_msg, error_msg
+        # Обработка различных типов ошибок
+        error_str = str(e)
+        if "no element found" in error_str.lower() or "xml" in error_str.lower():
+            return "Транскрипция недоступна для этого видео", "Транскрипция недоступна для этого видео"
+        else:
+            error_msg = f"Не удалось получить транскрипцию: {error_str[:200]}"
+            return error_msg, error_msg
 
 # Функция для получения текста с превью через Claude API
 def get_thumbnail_text(video_id):
@@ -184,12 +179,13 @@ def get_thumbnail_text(video_id):
             return f"API ключ Anthropic не найден. Доступные ключи: {available_keys}"
         
         # Получаем ключ и проверяем его формат
-        api_key = st.secrets["ANTHROPIC_API_KEY"]
+        api_key = str(st.secrets["ANTHROPIC_API_KEY"])
         if not api_key or not api_key.startswith("sk-"):
             return f"Неверный формат API ключа Anthropic (должен начинаться с 'sk-')"
         
-        # Создаем клиент без дополнительных параметров
-        client = anthropic.Anthropic(api_key=str(api_key))
+        # Создаем клиент только с API ключом, избегая дополнительных параметров от Streamlit
+        import anthropic as anthropic_module
+        client = anthropic_module.Anthropic(api_key=api_key)
         
         # Отправляем запрос к Claude
         message = client.messages.create(
