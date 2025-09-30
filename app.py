@@ -3,6 +3,7 @@ import re
 import os
 import io
 import base64
+import time
 from PIL import Image
 import requests
 from googleapiclient.discovery import build
@@ -33,6 +34,10 @@ if 'selected_model' not in st.session_state:
     st.session_state.selected_model = "Claude Opus 4"
 if 'show_timestamps' not in st.session_state:
     st.session_state.show_timestamps = False
+if 'synopsis_orig' not in st.session_state:
+    st.session_state.synopsis_orig = ""
+if 'synopsis_red' not in st.session_state:
+    st.session_state.synopsis_red = ""
 
 # Функция для извлечения ID видео из URL YouTube
 def extract_video_id(url):
@@ -230,6 +235,141 @@ def get_claude_model():
     }
     return model_mapping[st.session_state.selected_model]
 
+# Функция для создания синопсиса референса
+def create_synopsis_orig():
+    """Создает синопсис на основе транскрипции видео"""
+    try:
+        # Проверяем наличие транскрипции
+        transcript = st.session_state.get('transcript', '')
+        if not transcript:
+            return None, "Нет транскрипции для создания синопсиса"
+        
+        # Загружаем промпт
+        try:
+            with open("prompt_synopsis_orig.txt", "r", encoding="utf-8") as file:
+                prompt_text = file.read()
+        except FileNotFoundError:
+            return None, "Не найден файл prompt_synopsis_orig.txt"
+        
+        # Проверяем наличие API ключа
+        if "ANTHROPIC_API_KEY" not in st.secrets:
+            return None, "API ключ Anthropic не найден в секретах"
+        
+        # Инициализируем клиент Claude
+        api_key = str(st.secrets["ANTHROPIC_API_KEY"])
+        client = anthropic.Anthropic(api_key=api_key)
+        
+        # Попытки отправки запроса с обработкой rate limit
+        max_retries = 3
+        retry_delay = 30  # начальная задержка в секундах
+        
+        for attempt in range(max_retries):
+            try:
+                # Отправляем запрос к Claude
+                message = client.messages.create(
+                    model=get_claude_model(),
+                    max_tokens=4000,
+                    system=prompt_text,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": transcript
+                        }
+                    ]
+                )
+                
+                return message.content[0].text, None
+                
+            except anthropic.RateLimitError as e:
+                if attempt < max_retries - 1:
+                    # Показываем сообщение о повторной попытке
+                    wait_time = retry_delay * (attempt + 1)
+                    st.warning(f"⏳ Превышен лимит запросов API. Ожидание {wait_time} секунд перед повторной попыткой...")
+                    time.sleep(wait_time)
+                else:
+                    return None, f"Превышен лимит запросов API. Пожалуйста, подождите несколько минут и попробуйте снова."
+            except Exception as e:
+                error_str = str(e)
+                if "rate_limit" in error_str.lower() or "429" in error_str:
+                    if attempt < max_retries - 1:
+                        wait_time = retry_delay * (attempt + 1)
+                        st.warning(f"⏳ Превышен лимит запросов API. Ожидание {wait_time} секунд перед повторной попыткой...")
+                        time.sleep(wait_time)
+                    else:
+                        return None, f"Превышен лимит запросов API. Пожалуйста, подождите несколько минут и попробуйте снова."
+                else:
+                    return None, f"Ошибка при создании синопсиса: {error_str}"
+                    
+    except Exception as e:
+        return None, f"Ошибка при создании синопсиса: {str(e)}"
+
+# Функция для создания измененного синопсиса
+def create_synopsis_red(synopsis_orig):
+    """Создает измененный синопсис на основе оригинального синопсиса"""
+    try:
+        # Проверяем наличие оригинального синопсиса
+        if not synopsis_orig:
+            return None, "Нет оригинального синопсиса для изменения"
+        
+        # Загружаем промпт
+        try:
+            with open("prompt_synopsis_red.txt", "r", encoding="utf-8") as file:
+                prompt_text = file.read()
+        except FileNotFoundError:
+            return None, "Не найден файл prompt_synopsis_red.txt"
+        
+        # Проверяем наличие API ключа
+        if "ANTHROPIC_API_KEY" not in st.secrets:
+            return None, "API ключ Anthropic не найден в секретах"
+        
+        # Инициализируем клиент Claude
+        api_key = str(st.secrets["ANTHROPIC_API_KEY"])
+        client = anthropic.Anthropic(api_key=api_key)
+        
+        # Попытки отправки запроса с обработкой rate limit
+        max_retries = 3
+        retry_delay = 30  # начальная задержка в секундах
+        
+        for attempt in range(max_retries):
+            try:
+                # Отправляем запрос к Claude
+                message = client.messages.create(
+                    model=get_claude_model(),
+                    max_tokens=4000,
+                    system=prompt_text,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": synopsis_orig
+                        }
+                    ]
+                )
+                
+                return message.content[0].text, None
+                
+            except anthropic.RateLimitError as e:
+                if attempt < max_retries - 1:
+                    # Показываем сообщение о повторной попытке
+                    wait_time = retry_delay * (attempt + 1)
+                    st.warning(f"⏳ Превышен лимит запросов API. Ожидание {wait_time} секунд перед повторной попыткой...")
+                    time.sleep(wait_time)
+                else:
+                    return None, f"Превышен лимит запросов API. Пожалуйста, подождите несколько минут и попробуйте снова."
+            except Exception as e:
+                error_str = str(e)
+                if "rate_limit" in error_str.lower() or "429" in error_str:
+                    if attempt < max_retries - 1:
+                        wait_time = retry_delay * (attempt + 1)
+                        st.warning(f"⏳ Превышен лимит запросов API. Ожидание {wait_time} секунд перед повторной попыткой...")
+                        time.sleep(wait_time)
+                    else:
+                        return None, f"Превышен лимит запросов API. Пожалуйста, подождите несколько минут и попробуйте снова."
+                else:
+                    return None, f"Ошибка при создании измененного синопсиса: {error_str}"
+                    
+    except Exception as e:
+        return None, f"Ошибка при создании измененного синопсиса: {str(e)}"
+
 # Заголовок приложения
 st.title("🎬 Topic Maker")
 
@@ -242,6 +382,17 @@ with st.sidebar:
         index=0
     )
     st.info(f"Текущая модель: {st.session_state.selected_model}")
+    
+    # Информация о лимитах API
+    with st.expander("ℹ️ О лимитах API"):
+        st.write("""
+        **Важно:** API Claude имеет ограничения по скорости запросов.
+        
+        Если вы видите ошибку о превышении лимита:
+        - Приложение автоматически повторит попытку через 30-90 секунд
+        - Если ошибка повторяется, подождите 2-3 минуты перед новой попыткой
+        - Используйте более легкие модели (Sonnet вместо Opus) для меньшего потребления токенов
+        """)
     
     # Отладочная информация
     with st.expander("🔍 Debug Info"):
@@ -266,6 +417,9 @@ with st.sidebar:
             st.session_state.video_title = ""
             st.session_state.thumbnail_text = ""
             st.session_state.transcript = ""
+            st.session_state.transcript_with_timestamps = ""
+            st.session_state.synopsis_orig = ""
+            st.session_state.synopsis_red = ""
             st.rerun()
 
 # Основной контент
@@ -407,28 +561,148 @@ st.markdown("### 📚 Синопсисы")
 col1, col2 = st.columns(2)
 
 with col1:
-    synopsis_orig = st.text_area(
+    # Отображаем текущее значение синопсиса из session_state
+    current_synopsis_orig = st.session_state.get('synopsis_orig', '')
+    synopsis_orig_input = st.text_area(
         "**Синопсис референса**",
+        value=current_synopsis_orig,
         height=200,
-        key="synopsis_orig"
+        key="synopsis_orig_text_area"
     )
+    
     if st.button("🔨 Создать", key="create_synopsis_orig"):
-        if not st.session_state.video_id:
-            st.warning("⚠️ Сначала получите данные о видео")
+        # Проверяем наличие транскрипции
+        if not st.session_state.get('transcript', ''):
+            # Если нет транскрипции, проверяем video_id
+            if not st.session_state.video_id:
+                st.warning("⚠️ Данные о видео не найдены. Пожалуйста, сначала введите ссылку на видео и нажмите 'Получить данные референса'")
+            else:
+                # Есть video_id, но нет транскрипции - получаем все данные
+                with st.spinner("📝 Получение данных о видео..."):
+                    # Получаем заголовок
+                    title = get_video_title(st.session_state.video_id)
+                    st.session_state.video_title = title if title else ""
+                    
+                    # Получаем текст с превью
+                    thumbnail_text = get_thumbnail_text(st.session_state.video_id)
+                    st.session_state.thumbnail_text = thumbnail_text if thumbnail_text else ""
+                    
+                    # Получаем транскрипцию
+                    transcript, transcript_with_timestamps = get_video_transcript(st.session_state.video_id)
+                    st.session_state.transcript = transcript if transcript else ""
+                    st.session_state.transcript_with_timestamps = transcript_with_timestamps if transcript_with_timestamps else ""
+                    
+                    if not st.session_state.transcript:
+                        st.error("❌ Не удалось получить транскрипцию видео")
+                    else:
+                        st.success("✅ Данные о видео получены")
+                        
+                        # Теперь создаем синопсис
+                        with st.spinner("🤖 Создаю синопсис референса..."):
+                            synopsis, error = create_synopsis_orig()
+                            if error:
+                                st.error(f"❌ {error}")
+                            else:
+                                st.session_state.synopsis_orig = synopsis
+                                st.success("✅ Синопсис референса создан")
+                                st.rerun()
         else:
-            st.info("🚧 Функция в разработке")
+            # Есть транскрипция - создаем синопсис
+            with st.spinner("🤖 Создаю синопсис референса..."):
+                synopsis, error = create_synopsis_orig()
+                if error:
+                    st.error(f"❌ {error}")
+                else:
+                    st.session_state.synopsis_orig = synopsis
+                    st.success("✅ Синопсис референса создан")
+                    st.rerun()
 
 with col2:
-    synopsis_red = st.text_area(
+    # Отображаем текущее значение измененного синопсиса из session_state
+    current_synopsis_red = st.session_state.get('synopsis_red', '')
+    synopsis_red_input = st.text_area(
         "**Синопсис изменённый**",
+        value=current_synopsis_red,
         height=200,
-        key="synopsis_red"
+        key="synopsis_red_text_area"
     )
+    
     if st.button("🔨 Создать", key="create_synopsis_red"):
-        if not st.session_state.video_id:
-            st.warning("⚠️ Сначала получите данные о видео")
+        # Проверяем наличие оригинального синопсиса
+        if not st.session_state.get('synopsis_orig', ''):
+            # Если нет оригинального синопсиса, проверяем транскрипцию
+            if not st.session_state.get('transcript', ''):
+                # Если нет транскрипции, проверяем video_id
+                if not st.session_state.video_id:
+                    st.warning("⚠️ Данные о видео не найдены. Пожалуйста, сначала введите ссылку на видео и нажмите 'Получить данные референса'")
+                else:
+                    # Есть video_id, но нет транскрипции - получаем все данные
+                    with st.spinner("📝 Получение данных о видео..."):
+                        # Получаем заголовок
+                        title = get_video_title(st.session_state.video_id)
+                        st.session_state.video_title = title if title else ""
+                        
+                        # Получаем текст с превью
+                        thumbnail_text = get_thumbnail_text(st.session_state.video_id)
+                        st.session_state.thumbnail_text = thumbnail_text if thumbnail_text else ""
+                        
+                        # Получаем транскрипцию
+                        transcript, transcript_with_timestamps = get_video_transcript(st.session_state.video_id)
+                        st.session_state.transcript = transcript if transcript else ""
+                        st.session_state.transcript_with_timestamps = transcript_with_timestamps if transcript_with_timestamps else ""
+                        
+                        if not st.session_state.transcript:
+                            st.error("❌ Не удалось получить транскрипцию видео")
+                        else:
+                            st.success("✅ Данные о видео получены")
+                            
+                            # Теперь создаем синопсис референса
+                            with st.spinner("🤖 Создаю синопсис референса..."):
+                                synopsis_orig, error = create_synopsis_orig()
+                                if error:
+                                    st.error(f"❌ {error}")
+                                else:
+                                    st.session_state.synopsis_orig = synopsis_orig
+                                    st.success("✅ Синопсис референса создан")
+                                    
+                                    # И создаем измененный синопсис
+                                    with st.spinner("🤖 Создаю изменённый синопсис..."):
+                                        synopsis_red, error = create_synopsis_red(synopsis_orig)
+                                        if error:
+                                            st.error(f"❌ {error}")
+                                        else:
+                                            st.session_state.synopsis_red = synopsis_red
+                                            st.success("✅ Синопсис изменённый создан")
+                                            st.rerun()
+            else:
+                # Есть транскрипция, но нет оригинального синопсиса - создаем его
+                with st.spinner("🤖 Создаю синопсис референса..."):
+                    synopsis_orig, error = create_synopsis_orig()
+                    if error:
+                        st.error(f"❌ {error}")
+                    else:
+                        st.session_state.synopsis_orig = synopsis_orig
+                        st.success("✅ Синопсис референса создан")
+                        
+                        # Теперь создаем измененный синопсис
+                        with st.spinner("🤖 Создаю изменённый синопсис..."):
+                            synopsis_red, error = create_synopsis_red(synopsis_orig)
+                            if error:
+                                st.error(f"❌ {error}")
+                            else:
+                                st.session_state.synopsis_red = synopsis_red
+                                st.success("✅ Синопсис изменённый создан")
+                                st.rerun()
         else:
-            st.info("🚧 Функция в разработке")
+            # Если есть оригинальный синопсис, создаем измененный
+            with st.spinner("🤖 Создаю изменённый синопсис..."):
+                synopsis_red, error = create_synopsis_red(st.session_state.synopsis_orig)
+                if error:
+                    st.error(f"❌ {error}")
+                else:
+                    st.session_state.synopsis_red = synopsis_red
+                    st.success("✅ Синопсис изменённый создан")
+                    st.rerun()
 
 # Секция сценария
 st.markdown("---")
