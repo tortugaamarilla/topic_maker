@@ -92,48 +92,23 @@ def get_video_title(video_id):
 # Функция для получения транскрипции видео
 def get_video_transcript(video_id):
     try:
-        from youtube_transcript_api._api import YouTubeTranscriptApi as API
+        # Создаем экземпляр API
+        api = YouTubeTranscriptApi()
         
-        # Получаем список транскрипций для видео
-        transcript_list = API.list_transcripts(video_id)
+        # Получаем транскрипцию напрямую
+        transcript_data = api.fetch(video_id)
         
-        # Пытаемся получить транскрипцию
-        transcript = None
-        
-        # Сначала пробуем найти английскую транскрипцию (оригинальную или автогенерированную)
-        for t in transcript_list:
-            if 'en' in t.language_code.lower():
-                transcript = t
-                break
-        
-        # Если не нашли английскую, берем первую доступную
-        if not transcript:
-            for t in transcript_list:
-                transcript = t
-                break
-        
-        if transcript:
-            # Получаем данные транскрипции
-            transcript_data = transcript.fetch()
-            # Собираем весь текст
-            full_text = ' '.join([entry['text'] for entry in transcript_data])
+        # Собираем весь текст транскрипции
+        if transcript_data:
+            # transcript_data - это список объектов с полями text, start, duration
+            # Каждый элемент - это отдельная фраза/строка в YouTube
+            # Объединяем их через перенос строки, чтобы сохранить структуру
+            full_text = '\n'.join([str(entry.text) if hasattr(entry, 'text') else str(entry.get('text', '')) for entry in transcript_data])
             return full_text
         else:
             return "Транскрипция недоступна для этого видео"
             
     except Exception as e:
-        # Пробуем альтернативный метод
-        try:
-            from youtube_transcript_api import YouTubeTranscriptApi
-            # Используем метод get_transcripts (множественное число)
-            transcripts = YouTubeTranscriptApi.get_transcripts([video_id], languages=['en', 'en-US'])
-            if video_id in transcripts:
-                transcript_data = transcripts[video_id]
-                full_text = ' '.join([entry['text'] for entry in transcript_data])
-                return full_text
-        except:
-            pass
-        
         return f"Не удалось получить транскрипцию: {str(e)[:200]}"
 
 # Функция для получения текста с превью через Claude API
