@@ -322,11 +322,48 @@ def get_max_tokens():
     """Возвращает максимальное количество токенов для выбранной модели"""
     # Обновленные лимиты для новых моделей
     if st.session_state.selected_model in ["Claude Opus 4.1", "Claude Opus 4"]:
-        return 8192
+        return 32000  # 32K токенов
     elif st.session_state.selected_model in ["Claude Sonnet 4.5", "Claude Sonnet 4"]:
-        return 8192
+        return 64000  # 64K токенов
     else:  # Claude Sonnet 3.7
-        return 4096
+        return 64000  # 64K токенов
+
+# Функция для получения информации о модели
+def get_model_info():
+    """Возвращает информацию о максимальных размерах окон и стоимости для выбранной модели"""
+    model_info = {
+        "Claude Opus 4.1": {
+            "input_window": "200K",
+            "output_window": "32K",
+            "input_cost": "$15",
+            "output_cost": "$75"
+        },
+        "Claude Opus 4": {
+            "input_window": "200K",
+            "output_window": "32K", 
+            "input_cost": "$15",
+            "output_cost": "$75"
+        },
+        "Claude Sonnet 4.5": {
+            "input_window": "200K",
+            "output_window": "64K",
+            "input_cost": "$3",
+            "output_cost": "$15"
+        },
+        "Claude Sonnet 4": {
+            "input_window": "200K",
+            "output_window": "64K",
+            "input_cost": "$3",
+            "output_cost": "$15"
+        },
+        "Claude Sonnet 3.7": {
+            "input_window": "200K",
+            "output_window": "64K",
+            "input_cost": "$3",
+            "output_cost": "$15"
+        }
+    }
+    return model_info.get(st.session_state.selected_model, {})
 
 # Функция для создания синопсиса референса
 def create_synopsis_orig():
@@ -552,7 +589,16 @@ with st.sidebar:
         index=0,  # По умолчанию Claude Opus 4.1
         key="main_model_select"
     )
-    st.info(f"Максимум токенов: {get_max_tokens()}")
+    
+    # Отображение информации о модели
+    model_info = get_model_info()
+    if model_info:
+        with st.container():
+            st.markdown("**Максимум токенов:**")
+            st.caption(f"• Входящее окно: {model_info['input_window']}")
+            st.caption(f"• Выходящее окно: {model_info['output_window']}")
+            st.caption(f"• Стоимость за 1M токенов входящих: {model_info['input_cost']}")
+            st.caption(f"• Стоимость за 1M токенов выходящих: {model_info['output_cost']}")
     
     # Выбор модели для превью
     st.markdown("### Модель Claude для превью")
@@ -579,14 +625,14 @@ with st.sidebar:
         - API имеет ограничение на скорость увеличения использования токенов
         
         **Лимиты моделей:**
-        - Claude Opus 4.1: до 8192 токенов ответа (≈20-24 тыс. символов)
-        - Claude Opus 4: до 8192 токенов ответа (≈20-24 тыс. символов)
-        - Claude Sonnet 4.5: до 8192 токенов ответа (≈20-24 тыс. символов)
-        - Claude Sonnet 4: до 8192 токенов ответа (≈20-24 тыс. символов)
-        - Claude Sonnet 3.7: до 4096 токенов ответа (≈10-12 тыс. символов)
+        - Claude Opus 4.1: входящее окно 200K, выходящее окно 32K токенов
+        - Claude Opus 4: входящее окно 200K, выходящее окно 32K токенов
+        - Claude Sonnet 4.5: входящее окно 200K, выходящее окно 64K токенов
+        - Claude Sonnet 4: входящее окно 200K, выходящее окно 64K токенов
+        - Claude Sonnet 3.7: входящее окно 200K, выходящее окно 64K токенов
         
         **Рекомендации для решения:**
-        1. **Используйте Claude Opus или Sonnet 4+** - у них выше лимиты (8192 токена)
+        1. **Используйте Claude Sonnet 4.5, 4 или 3.7** - у них больше выходящее окно (64K токенов)
         2. **Делайте паузы** между созданием синопсисов (2-3 минуты)
         3. **Начните с коротких видео** (до 30 минут), затем постепенно увеличивайте
         4. Если ошибка повторяется - подождите 5-10 минут
