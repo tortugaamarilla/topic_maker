@@ -31,7 +31,9 @@ if 'transcript' not in st.session_state:
 if 'transcript_with_timestamps' not in st.session_state:
     st.session_state.transcript_with_timestamps = ""
 if 'selected_model' not in st.session_state:
-    st.session_state.selected_model = "Claude Opus 4"
+    st.session_state.selected_model = "Claude Opus 4.1"
+if 'selected_model_preview' not in st.session_state:
+    st.session_state.selected_model_preview = "Claude Sonnet 3.7"
 if 'show_timestamps' not in st.session_state:
     st.session_state.show_timestamps = False
 if 'synopsis_orig' not in st.session_state:
@@ -262,7 +264,7 @@ def get_thumbnail_text(video_id):
         
         # Отправляем запрос к Claude
         message = client.messages.create(
-            model="claude-3-haiku-20240307",  # Используем Haiku для обработки изображений
+            model=get_claude_model_preview(),  # Используем выбранную модель для обработки изображений
             max_tokens=1000,
             messages=[
                 {
@@ -293,26 +295,37 @@ def get_thumbnail_text(video_id):
             error_msg = "Проблема с API ключом Anthropic. Проверьте правильность ключа в секретах."
         return error_msg
 
-# Функция для выбора модели Claude
+# Функция для выбора основной модели Claude
 def get_claude_model():
     model_mapping = {
-        "Claude Opus 4": "claude-3-opus-20240229",
-        "Claude Sonnet 4.5": "claude-3-5-sonnet-20241022",
-        "Claude Opus 4.5": "claude-3-opus-20240229",  # Временно используем Opus 3
-        "Claude Sonnet 4.1": "claude-3-sonnet-20240229"
+        "Claude Opus 4.1": "claude-opus-4-1-20250805",
+        "Claude Opus 4": "claude-opus-4-20250514",
+        "Claude Sonnet 4.5": "claude-sonnet-4-5-20250929",
+        "Claude Sonnet 4": "claude-sonnet-4-20250514",
+        "Claude Sonnet 3.7": "claude-3-7-sonnet-20250219"
     }
     return model_mapping[st.session_state.selected_model]
+
+# Функция для выбора модели Claude для превью
+def get_claude_model_preview():
+    model_mapping = {
+        "Claude Opus 4.1": "claude-opus-4-1-20250805",
+        "Claude Opus 4": "claude-opus-4-20250514",
+        "Claude Sonnet 4.5": "claude-sonnet-4-5-20250929",
+        "Claude Sonnet 4": "claude-sonnet-4-20250514",
+        "Claude Sonnet 3.7": "claude-3-7-sonnet-20250219"
+    }
+    return model_mapping[st.session_state.selected_model_preview]
 
 # Функция для получения максимального количества токенов для модели
 def get_max_tokens():
     """Возвращает максимальное количество токенов для выбранной модели"""
-    # Claude Opus 3 имеет лимит 4096 токенов
-    # Claude Sonnet 3.5 имеет лимит 8192 токенов
-    if st.session_state.selected_model in ["Claude Opus 4", "Claude Opus 4.5"]:
-        return 4096
-    elif st.session_state.selected_model == "Claude Sonnet 4.5":
+    # Обновленные лимиты для новых моделей
+    if st.session_state.selected_model in ["Claude Opus 4.1", "Claude Opus 4"]:
         return 8192
-    else:  # Claude Sonnet 4.1
+    elif st.session_state.selected_model in ["Claude Sonnet 4.5", "Claude Sonnet 4"]:
+        return 8192
+    else:  # Claude Sonnet 3.7
         return 4096
 
 # Функция для создания синопсиса референса
@@ -527,13 +540,28 @@ if st.session_state.get('need_rerun', False):
 # Боковая панель для настроек
 with st.sidebar:
     st.header("⚙️ Настройки")
+    
+    # Список доступных моделей
+    available_models = ["Claude Opus 4.1", "Claude Opus 4", "Claude Sonnet 4.5", "Claude Sonnet 4", "Claude Sonnet 3.7"]
+    
+    # Выбор основной модели
+    st.markdown("### Модель Claude осн.")
     st.session_state.selected_model = st.selectbox(
-        "Выберите модель Claude:",
-        ["Claude Opus 4", "Claude Sonnet 4.5", "Claude Opus 4.5", "Claude Sonnet 4.1"],
-        index=0
+        "Для синопсисов, аннотаций и сценариев:",
+        available_models,
+        index=0,  # По умолчанию Claude Opus 4.1
+        key="main_model_select"
     )
-    st.info(f"Текущая модель: {st.session_state.selected_model}")
-    st.info(f"Максимум токенов для ответа: {get_max_tokens()}")
+    st.info(f"Максимум токенов: {get_max_tokens()}")
+    
+    # Выбор модели для превью
+    st.markdown("### Модель Claude для превью")
+    st.session_state.selected_model_preview = st.selectbox(
+        "Для анализа изображений превью:",
+        available_models,
+        index=4,  # По умолчанию Claude Sonnet 3.7
+        key="preview_model_select"
+    )
     
     # Информация о лимитах API
     with st.expander("ℹ️ О лимитах API"):
@@ -551,12 +579,14 @@ with st.sidebar:
         - API имеет ограничение на скорость увеличения использования токенов
         
         **Лимиты моделей:**
-        - Claude Opus 4: до 4096 токенов ответа (≈10-12 тыс. символов)
+        - Claude Opus 4.1: до 8192 токенов ответа (≈20-24 тыс. символов)
+        - Claude Opus 4: до 8192 токенов ответа (≈20-24 тыс. символов)
         - Claude Sonnet 4.5: до 8192 токенов ответа (≈20-24 тыс. символов)
-        - Claude Sonnet 4.1: до 4096 токенов ответа
+        - Claude Sonnet 4: до 8192 токенов ответа (≈20-24 тыс. символов)
+        - Claude Sonnet 3.7: до 4096 токенов ответа (≈10-12 тыс. символов)
         
         **Рекомендации для решения:**
-        1. **Используйте Claude Sonnet 4.5** - у него выше лимиты (8192 токена)
+        1. **Используйте Claude Opus или Sonnet 4+** - у них выше лимиты (8192 токена)
         2. **Делайте паузы** между созданием синопсисов (2-3 минуты)
         3. **Начните с коротких видео** (до 30 минут), затем постепенно увеличивайте
         4. Если ошибка повторяется - подождите 5-10 минут
@@ -575,6 +605,8 @@ with st.sidebar:
         st.write(f"- transcript length: {len(st.session_state.get('transcript', ''))}")
         st.write(f"- synopsis_orig length: {len(st.session_state.get('synopsis_orig', ''))}")
         st.write(f"- synopsis_red length: {len(st.session_state.get('synopsis_red', ''))}")
+        st.write(f"- selected_model: {st.session_state.get('selected_model', 'None')}")
+        st.write(f"- selected_model_preview: {st.session_state.get('selected_model_preview', 'None')}")
         
         st.write("\nSecrets Status:")
         try:
