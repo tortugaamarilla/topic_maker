@@ -40,6 +40,25 @@ if 'synopsis_red' not in st.session_state:
     st.session_state.synopsis_red = ""
 if 'need_rerun' not in st.session_state:
     st.session_state.need_rerun = False
+# Хранение истории API запросов
+if 'api_history_synopsis_orig' not in st.session_state:
+    st.session_state.api_history_synopsis_orig = {}
+if 'api_history_synopsis_red' not in st.session_state:
+    st.session_state.api_history_synopsis_red = {}
+if 'api_history_annotation_orig' not in st.session_state:
+    st.session_state.api_history_annotation_orig = {}
+if 'api_history_annotation_red' not in st.session_state:
+    st.session_state.api_history_annotation_red = {}
+if 'api_history_scenario' not in st.session_state:
+    st.session_state.api_history_scenario = {}
+# Поля для хранения аннотаций
+if 'annotation_orig' not in st.session_state:
+    st.session_state.annotation_orig = ""
+if 'annotation_red' not in st.session_state:
+    st.session_state.annotation_red = ""
+# Поле для хранения сценария
+if 'scenario' not in st.session_state:
+    st.session_state.scenario = ""
 
 # Функция для извлечения ID видео из URL YouTube
 def extract_video_id(url):
@@ -348,6 +367,21 @@ def create_synopsis_orig():
                 
                 result = message.content[0].text
                 print(f"DEBUG: Получен синопсис длиной {len(result)} символов")
+                
+                # Сохраняем историю запроса для синопсиса референса
+                st.session_state.api_history_synopsis_orig = {
+                    'request': {
+                        'model': get_claude_model(),
+                        'max_tokens': get_max_tokens(),
+                        'temperature': 0.7,
+                        'system_prompt': prompt_text[:500] + "..." if len(prompt_text) > 500 else prompt_text,
+                        'user_message': transcript[:500] + "..." if len(transcript) > 500 else transcript,
+                        'full_system_prompt': prompt_text,
+                        'full_user_message': transcript
+                    },
+                    'response': result
+                }
+                
                 return result, None
                 
             except anthropic.RateLimitError as e:
@@ -435,6 +469,21 @@ def create_synopsis_red(synopsis_orig):
                 
                 result = message.content[0].text
                 print(f"DEBUG: Получен синопсис длиной {len(result)} символов")
+                
+                # Сохраняем историю запроса для измененного синопсиса
+                st.session_state.api_history_synopsis_red = {
+                    'request': {
+                        'model': get_claude_model(),
+                        'max_tokens': get_max_tokens(),
+                        'temperature': 0.7,
+                        'system_prompt': prompt_text[:500] + "..." if len(prompt_text) > 500 else prompt_text,
+                        'user_message': synopsis_orig[:500] + "..." if len(synopsis_orig) > 500 else synopsis_orig,
+                        'full_system_prompt': prompt_text,
+                        'full_user_message': synopsis_orig
+                    },
+                    'response': result
+                }
+                
                 return result, None
                 
             except anthropic.RateLimitError as e:
@@ -666,22 +715,96 @@ col1_header, col1_btn = st.columns([4, 1])
 with col1_header:
     st.markdown("**Аннотация референса**")
 with col1_btn:
-    if st.button("Создать", key="create_annotation_orig"):
-        if not st.session_state.video_id:
-            st.warning("⚠️ Сначала получите данные о видео")
-        else:
-            st.info("🚧 Функция в разработке")
+    create_annotation_orig_clicked = st.button("Создать", key="create_annotation_orig")
+
+# Поле для отображения аннотации референса (показываем всегда, если есть данные)
+if st.session_state.get('annotation_orig', ''):
+    st.text_area(
+        "Аннотация референса",
+        value=st.session_state.annotation_orig,
+        height=200,
+        key="annotation_orig_display",
+        label_visibility="collapsed"
+    )
+    
+    # Свёрнутый блок с информацией о запросе к API
+    if st.session_state.get('api_history_annotation_orig'):
+        with st.expander("🔍 Детали запроса к LLM", expanded=False):
+            api_data = st.session_state.api_history_annotation_orig
+            st.markdown("**Параметры запроса:**")
+            st.code(f"""
+Модель: {api_data['request']['model']}
+Макс. токенов: {api_data['request']['max_tokens']}
+Температура: {api_data['request']['temperature']}
+""")
+            st.markdown("**Системный промпт (начало):**")
+            st.text(api_data['request']['system_prompt'])
+            st.markdown("**Сообщение пользователя (начало):**")
+            st.text(api_data['request']['user_message'])
+            
+            # Полные версии в отдельных вкладках
+            tab1, tab2, tab3 = st.tabs(["Полный системный промпт", "Полное сообщение", "Ответ LLM"])
+            with tab1:
+                st.text_area("Системный промпт", value=api_data['request']['full_system_prompt'], height=300, key="full_system_prompt_annot_orig", label_visibility="collapsed")
+            with tab2:
+                st.text_area("Сообщение пользователя", value=api_data['request']['full_user_message'], height=300, key="full_user_message_annot_orig", label_visibility="collapsed")
+            with tab3:
+                st.text_area("Ответ модели", value=api_data['response'], height=300, key="full_response_annot_orig", label_visibility="collapsed")
+
+# Обработка нажатия кнопки создания аннотации референса
+if create_annotation_orig_clicked:
+    if not st.session_state.video_id:
+        st.warning("⚠️ Сначала получите данные о видео")
+    else:
+        st.info("🚧 Функция в разработке")
 
 # Аннотация изменённая - заголовок и кнопка в одной строке
 col2_header, col2_btn = st.columns([4, 1])
 with col2_header:
     st.markdown("**Аннотация изменённая**")
 with col2_btn:
-    if st.button("Создать", key="create_annotation_red"):
-        if not st.session_state.video_id:
-            st.warning("⚠️ Сначала получите данные о видео")
-        else:
-            st.info("🚧 Функция в разработке")
+    create_annotation_red_clicked = st.button("Создать", key="create_annotation_red")
+
+# Поле для отображения аннотации изменённой (показываем всегда, если есть данные)
+if st.session_state.get('annotation_red', ''):
+    st.text_area(
+        "Аннотация изменённая",
+        value=st.session_state.annotation_red,
+        height=200,
+        key="annotation_red_display",
+        label_visibility="collapsed"
+    )
+    
+    # Свёрнутый блок с информацией о запросе к API
+    if st.session_state.get('api_history_annotation_red'):
+        with st.expander("🔍 Детали запроса к LLM", expanded=False):
+            api_data = st.session_state.api_history_annotation_red
+            st.markdown("**Параметры запроса:**")
+            st.code(f"""
+Модель: {api_data['request']['model']}
+Макс. токенов: {api_data['request']['max_tokens']}
+Температура: {api_data['request']['temperature']}
+""")
+            st.markdown("**Системный промпт (начало):**")
+            st.text(api_data['request']['system_prompt'])
+            st.markdown("**Сообщение пользователя (начало):**")
+            st.text(api_data['request']['user_message'])
+            
+            # Полные версии в отдельных вкладках
+            tab1, tab2, tab3 = st.tabs(["Полный системный промпт", "Полное сообщение", "Ответ LLM"])
+            with tab1:
+                st.text_area("Системный промпт", value=api_data['request']['full_system_prompt'], height=300, key="full_system_prompt_annot_red", label_visibility="collapsed")
+            with tab2:
+                st.text_area("Сообщение пользователя", value=api_data['request']['full_user_message'], height=300, key="full_user_message_annot_red", label_visibility="collapsed")
+            with tab3:
+                st.text_area("Ответ модели", value=api_data['response'], height=300, key="full_response_annot_red", label_visibility="collapsed")
+
+# Обработка нажатия кнопки создания аннотации изменённой
+if create_annotation_red_clicked:
+    if not st.session_state.video_id:
+        st.warning("⚠️ Сначала получите данные о видео")
+    else:
+        st.info("🚧 Функция в разработке")
 
 # Секция синопсисов
 st.markdown("---")
@@ -692,7 +815,44 @@ col1_header, col1_btn = st.columns([4, 1])
 with col1_header:
     st.markdown("**Синопсис референса**")
 with col1_btn:
-    if st.button("Создать", key="create_synopsis_orig"):
+    create_synopsis_orig_clicked = st.button("Создать", key="create_synopsis_orig")
+
+# Поле для отображения синопсиса референса (показываем всегда, если есть данные)
+if st.session_state.get('synopsis_orig', ''):
+    st.text_area(
+        "Синопсис референса",
+        value=st.session_state.synopsis_orig,
+        height=400,
+        key="synopsis_orig_display",
+        label_visibility="collapsed"
+    )
+    
+    # Свёрнутый блок с информацией о запросе к API
+    if st.session_state.get('api_history_synopsis_orig'):
+        with st.expander("🔍 Детали запроса к LLM", expanded=False):
+            api_data = st.session_state.api_history_synopsis_orig
+            st.markdown("**Параметры запроса:**")
+            st.code(f"""
+Модель: {api_data['request']['model']}
+Макс. токенов: {api_data['request']['max_tokens']}
+Температура: {api_data['request']['temperature']}
+""")
+            st.markdown("**Системный промпт (начало):**")
+            st.text(api_data['request']['system_prompt'])
+            st.markdown("**Сообщение пользователя (начало):**")
+            st.text(api_data['request']['user_message'])
+            
+            # Полные версии в отдельных вкладках
+            tab1, tab2, tab3 = st.tabs(["Полный системный промпт", "Полное сообщение", "Ответ LLM"])
+            with tab1:
+                st.text_area("Системный промпт", value=api_data['request']['full_system_prompt'], height=300, key="full_system_prompt_orig", label_visibility="collapsed")
+            with tab2:
+                st.text_area("Сообщение пользователя", value=api_data['request']['full_user_message'], height=300, key="full_user_message_orig", label_visibility="collapsed")
+            with tab3:
+                st.text_area("Ответ модели", value=api_data['response'], height=300, key="full_response_orig", label_visibility="collapsed")
+
+# Обработка нажатия кнопки создания синопсиса референса
+if create_synopsis_orig_clicked:
         # Проверяем наличие транскрипции
         if not st.session_state.get('transcript', ''):
             # Если нет транскрипции, проверяем video_id
@@ -727,9 +887,7 @@ with col1_btn:
                             else:
                                 st.session_state.synopsis_orig = synopsis
                                 st.success(f"✅ Синопсис референса создан ({len(synopsis)} символов)")
-                                # Показываем результат в expander
-                                with st.expander("📄 Полученный синопсис", expanded=True):
-                                    st.text_area("Синопсис", value=synopsis, height=400, key="synopsis_orig_result_2", label_visibility="collapsed")
+                                st.rerun()
         else:
             # Есть транскрипция - создаем синопсис
             with st.spinner("🤖 Создаю синопсис референса..."):
@@ -739,17 +897,51 @@ with col1_btn:
                 else:
                     st.session_state.synopsis_orig = synopsis
                     st.success(f"✅ Синопсис референса создан ({len(synopsis)} символов)")
-                    # Показываем результат в expander для немедленного просмотра
-                    with st.expander("📄 Полученный синопсис (скопируйте при необходимости)", expanded=True):
-                        st.text_area("Синопсис", value=synopsis, height=400, key="synopsis_orig_result", label_visibility="collapsed")
-                    st.info("💡 Синопсис сохранен. Обновите страницу (F5) для отображения в основном поле или скопируйте текст выше.")
+                    st.rerun()
 
 # Синопсис изменённый - заголовок и кнопка в одной строке
 col2_header, col2_btn = st.columns([4, 1])
 with col2_header:
     st.markdown("**Синопсис изменённый**")
 with col2_btn:
-    if st.button("Создать", key="create_synopsis_red"):
+    create_synopsis_red_clicked = st.button("Создать", key="create_synopsis_red")
+
+# Поле для отображения синопсиса изменённого (показываем всегда, если есть данные)
+if st.session_state.get('synopsis_red', ''):
+    st.text_area(
+        "Синопсис изменённый",
+        value=st.session_state.synopsis_red,
+        height=400,
+        key="synopsis_red_display",
+        label_visibility="collapsed"
+    )
+    
+    # Свёрнутый блок с информацией о запросе к API
+    if st.session_state.get('api_history_synopsis_red'):
+        with st.expander("🔍 Детали запроса к LLM", expanded=False):
+            api_data = st.session_state.api_history_synopsis_red
+            st.markdown("**Параметры запроса:**")
+            st.code(f"""
+Модель: {api_data['request']['model']}
+Макс. токенов: {api_data['request']['max_tokens']}
+Температура: {api_data['request']['temperature']}
+""")
+            st.markdown("**Системный промпт (начало):**")
+            st.text(api_data['request']['system_prompt'])
+            st.markdown("**Сообщение пользователя (начало):**")
+            st.text(api_data['request']['user_message'])
+            
+            # Полные версии в отдельных вкладках
+            tab1, tab2, tab3 = st.tabs(["Полный системный промпт", "Полное сообщение", "Ответ LLM"])
+            with tab1:
+                st.text_area("Системный промпт", value=api_data['request']['full_system_prompt'], height=300, key="full_system_prompt_red", label_visibility="collapsed")
+            with tab2:
+                st.text_area("Сообщение пользователя", value=api_data['request']['full_user_message'], height=300, key="full_user_message_red", label_visibility="collapsed")
+            with tab3:
+                st.text_area("Ответ модели", value=api_data['response'], height=300, key="full_response_red", label_visibility="collapsed")
+
+# Обработка нажатия кнопки создания синопсиса изменённого
+if create_synopsis_red_clicked:
         # Проверяем наличие оригинального синопсиса
         if not st.session_state.get('synopsis_orig', ''):
             # Если нет оригинального синопсиса, проверяем транскрипцию
@@ -795,8 +987,7 @@ with col2_btn:
                                         else:
                                             st.session_state.synopsis_red = synopsis_red
                                             st.success(f"✅ Синопсис изменённый создан ({len(synopsis_red)} символов)")
-                                            with st.expander("📄 Полученный синопсис", expanded=True):
-                                                st.text_area("Синопсис изменённый", value=synopsis_red, height=400, key="synopsis_red_result_1", label_visibility="collapsed")
+                                            st.rerun()
             else:
                 # Есть транскрипция, но нет оригинального синопсиса - создаем его
                 with st.spinner("🤖 Создаю синопсис референса..."):
@@ -815,8 +1006,7 @@ with col2_btn:
                             else:
                                 st.session_state.synopsis_red = synopsis_red
                                 st.success(f"✅ Синопсис изменённый создан ({len(synopsis_red)} символов)")
-                                with st.expander("📄 Полученный синопсис", expanded=True):
-                                    st.text_area("Синопсис изменённый", value=synopsis_red, height=400, key="synopsis_red_result_2", label_visibility="collapsed")
+                                st.rerun()
         else:
             # Если есть оригинальный синопсис, создаем измененный
             with st.spinner("🤖 Создаю изменённый синопсис..."):
@@ -826,8 +1016,7 @@ with col2_btn:
                 else:
                     st.session_state.synopsis_red = synopsis_red
                     st.success(f"✅ Синопсис изменённый создан ({len(synopsis_red)} символов)")
-                    with st.expander("📄 Полученный синопсис", expanded=True):
-                        st.text_area("Синопсис изменённый", value=synopsis_red, height=400, key="synopsis_red_result_3", label_visibility="collapsed")
+                    st.rerun()
 
 # Секция сценария
 st.markdown("---")
@@ -838,11 +1027,48 @@ col_header, col_btn = st.columns([4, 1])
 with col_header:
     st.markdown("**Сценарий по транскрипции изменённый**")
 with col_btn:
-    if st.button("Создать", key="create_scenario"):
-        if not st.session_state.video_id:
-            st.warning("⚠️ Сначала получите данные о видео")
-        else:
-            st.info("🚧 Функция в разработке")
+    create_scenario_clicked = st.button("Создать", key="create_scenario")
+
+# Поле для отображения сценария (показываем всегда, если есть данные)
+if st.session_state.get('scenario', ''):
+    st.text_area(
+        "Сценарий",
+        value=st.session_state.scenario,
+        height=500,
+        key="scenario_display",
+        label_visibility="collapsed"
+    )
+    
+    # Свёрнутый блок с информацией о запросе к API
+    if st.session_state.get('api_history_scenario'):
+        with st.expander("🔍 Детали запроса к LLM", expanded=False):
+            api_data = st.session_state.api_history_scenario
+            st.markdown("**Параметры запроса:**")
+            st.code(f"""
+Модель: {api_data['request']['model']}
+Макс. токенов: {api_data['request']['max_tokens']}
+Температура: {api_data['request']['temperature']}
+""")
+            st.markdown("**Системный промпт (начало):**")
+            st.text(api_data['request']['system_prompt'])
+            st.markdown("**Сообщение пользователя (начало):**")
+            st.text(api_data['request']['user_message'])
+            
+            # Полные версии в отдельных вкладках
+            tab1, tab2, tab3 = st.tabs(["Полный системный промпт", "Полное сообщение", "Ответ LLM"])
+            with tab1:
+                st.text_area("Системный промпт", value=api_data['request']['full_system_prompt'], height=300, key="full_system_prompt_scenario", label_visibility="collapsed")
+            with tab2:
+                st.text_area("Сообщение пользователя", value=api_data['request']['full_user_message'], height=300, key="full_user_message_scenario", label_visibility="collapsed")
+            with tab3:
+                st.text_area("Ответ модели", value=api_data['response'], height=300, key="full_response_scenario", label_visibility="collapsed")
+
+# Обработка нажатия кнопки создания сценария
+if create_scenario_clicked:
+    if not st.session_state.video_id:
+        st.warning("⚠️ Сначала получите данные о видео")
+    else:
+        st.info("🚧 Функция в разработке")
 
 # Footer с информацией
 st.markdown("---")
