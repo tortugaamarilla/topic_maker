@@ -475,9 +475,6 @@ if st.session_state.get('need_rerun', False):
     st.session_state.need_rerun = False
     st.rerun()
 
-# Заголовок приложения
-st.title("🎬 Topic Maker")
-
 # Боковая панель для настроек
 with st.sidebar:
     st.header("⚙️ Настройки")
@@ -551,8 +548,6 @@ with st.sidebar:
             st.rerun()
 
 # Основной контент
-st.markdown("### 📹 Введите ссылку на YouTube видео или ID видео")
-
 # Форма для ввода данных
 with st.form("video_form"):
     video_input = st.text_input(
@@ -600,36 +595,45 @@ if submitted and video_input:
 
 # Секция данных референса
 st.markdown("---")
-st.markdown("### 📊 Данные референса")
+st.markdown("### Данные референса")
 
 # Создаем контейнер для полей данных
 data_container = st.container()
 
 with data_container:
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        # Отображаем текущее значение из session_state
+    # Заголовок видео - однострочное поле
+    col_label1, col_field1 = st.columns([1, 4])
+    with col_label1:
+        st.markdown("**Заголовок видео:**")
+    with col_field1:
         current_title = st.session_state.get('video_title', '')
-        st.text_area(
-            "**📝 Заголовок видео**",
+        st.text_input(
+            "",
             value=current_title,
-            height=200,  # Увеличено с 100 до 200
             disabled=False,  # Делаем поле редактируемым
-            key=f"title_display_{hash(current_title)}"  # Уникальный ключ на основе контента
+            key=f"title_display_{hash(current_title)}",
+            label_visibility="collapsed"
         )
     
-    with col2:
+    # Текст с превью - уменьшенное многострочное поле
+    col_label2, col_field2 = st.columns([1, 4])
+    with col_label2:
+        st.markdown("**Текст с превью:**")
+    with col_field2:
         current_thumbnail = st.session_state.get('thumbnail_text', '')
         st.text_area(
-            "**🖼️ Текст с превью**",
+            "",
             value=current_thumbnail,
-            height=200,  # Увеличено с 100 до 200
+            height=50,  # Уменьшено в 4 раза (было 200)
             disabled=False,  # Делаем поле редактируемым
-            key=f"thumbnail_display_{hash(current_thumbnail)}"
+            key=f"thumbnail_display_{hash(current_thumbnail)}",
+            label_visibility="collapsed"
         )
     
-    with col3:
+    # Транскрипция видео - увеличенное поле
+    col_label3, col_field3 = st.columns([1, 4])
+    with col_label3:
+        st.markdown("**Транскрипция видео референса:**")
         # Чекбокс для временных меток
         show_timestamps = st.checkbox(
             "Сохранять временные метки",
@@ -637,7 +641,7 @@ with data_container:
             key="timestamps_checkbox"
         )
         st.session_state.show_timestamps = show_timestamps
-        
+    with col_field3:
         # Выбираем какую версию транскрипции показывать
         if show_timestamps:
             current_transcript = st.session_state.get('transcript_with_timestamps', '')
@@ -645,38 +649,35 @@ with data_container:
             current_transcript = st.session_state.get('transcript', '')
         
         st.text_area(
-            "**📄 Транскрипция видео референса**",
+            "",
             value=current_transcript,
-            height=200,  # Увеличено с 100 до 200
+            height=300,  # Увеличено в 1.5 раза (было 200)
             disabled=False,  # Делаем поле редактируемым
-            key=f"transcript_display_{hash(current_transcript)}_{show_timestamps}"
+            key=f"transcript_display_{hash(current_transcript)}_{show_timestamps}",
+            label_visibility="collapsed"
         )
 
 # Секция аннотаций
 st.markdown("---")
-st.markdown("### 📝 Аннотации")
+st.markdown("### Аннотации")
 
-col1, col2 = st.columns(2)
-
-with col1:
-    annotation_orig = st.text_area(
-        "**Аннотация референса**",
-        height=200,
-        key="annotation_orig"
-    )
-    if st.button("🔨 Создать", key="create_annotation_orig"):
+# Аннотация референса - заголовок и кнопка в одной строке
+col1_header, col1_btn = st.columns([4, 1])
+with col1_header:
+    st.markdown("**Аннотация референса**")
+with col1_btn:
+    if st.button("Создать", key="create_annotation_orig"):
         if not st.session_state.video_id:
             st.warning("⚠️ Сначала получите данные о видео")
         else:
             st.info("🚧 Функция в разработке")
 
-with col2:
-    annotation_red = st.text_area(
-        "**Аннотация изменённая**",
-        height=200,
-        key="annotation_red"
-    )
-    if st.button("🔨 Создать", key="create_annotation_red"):
+# Аннотация изменённая - заголовок и кнопка в одной строке
+col2_header, col2_btn = st.columns([4, 1])
+with col2_header:
+    st.markdown("**Аннотация изменённая**")
+with col2_btn:
+    if st.button("Создать", key="create_annotation_red"):
         if not st.session_state.video_id:
             st.warning("⚠️ Сначала получите данные о видео")
         else:
@@ -684,22 +685,14 @@ with col2:
 
 # Секция синопсисов
 st.markdown("---")
-st.markdown("### 📚 Синопсисы")
+st.markdown("### Синопсисы")
 
-col1, col2 = st.columns(2)
-
-with col1:
-    # Отображаем текущее значение синопсиса из session_state
-    # Используем уникальный ключ на основе содержимого для принудительного обновления
-    current_synopsis_orig = st.session_state.get('synopsis_orig', '')
-    synopsis_orig_input = st.text_area(
-        "**Синопсис референса**",
-        value=current_synopsis_orig,
-        height=200,
-        key=f"synopsis_orig_area_{hash(current_synopsis_orig)}"
-    )
-    
-    if st.button("🔨 Создать", key="create_synopsis_orig"):
+# Синопсис референса - заголовок и кнопка в одной строке
+col1_header, col1_btn = st.columns([4, 1])
+with col1_header:
+    st.markdown("**Синопсис референса**")
+with col1_btn:
+    if st.button("Создать", key="create_synopsis_orig"):
         # Проверяем наличие транскрипции
         if not st.session_state.get('transcript', ''):
             # Если нет транскрипции, проверяем video_id
@@ -751,17 +744,12 @@ with col1:
                         st.text_area("", value=synopsis, height=400, key="synopsis_orig_result")
                     st.info("💡 Синопсис сохранен. Обновите страницу (F5) для отображения в основном поле или скопируйте текст выше.")
 
-with col2:
-    # Отображаем текущее значение измененного синопсиса из session_state
-    current_synopsis_red = st.session_state.get('synopsis_red', '')
-    synopsis_red_input = st.text_area(
-        "**Синопсис изменённый**",
-        value=current_synopsis_red,
-        height=200,
-        key=f"synopsis_red_area_{hash(current_synopsis_red)}"
-    )
-    
-    if st.button("🔨 Создать", key="create_synopsis_red"):
+# Синопсис изменённый - заголовок и кнопка в одной строке
+col2_header, col2_btn = st.columns([4, 1])
+with col2_header:
+    st.markdown("**Синопсис изменённый**")
+with col2_btn:
+    if st.button("Создать", key="create_synopsis_red"):
         # Проверяем наличие оригинального синопсиса
         if not st.session_state.get('synopsis_orig', ''):
             # Если нет оригинального синопсиса, проверяем транскрипцию
@@ -843,18 +831,18 @@ with col2:
 
 # Секция сценария
 st.markdown("---")
-st.markdown("### 🎭 Сценарий")
+st.markdown("### Сценарий")
 
-scenario = st.text_area(
-    "**Сценарий по транскрипции изменённый**",
-    height=300,
-    key="scenario"
-)
-if st.button("🔨 Создать", key="create_scenario"):
-    if not st.session_state.video_id:
-        st.warning("⚠️ Сначала получите данные о видео")
-    else:
-        st.info("🚧 Функция в разработке")
+# Сценарий - заголовок и кнопка в одной строке
+col_header, col_btn = st.columns([4, 1])
+with col_header:
+    st.markdown("**Сценарий по транскрипции изменённый**")
+with col_btn:
+    if st.button("Создать", key="create_scenario"):
+        if not st.session_state.video_id:
+            st.warning("⚠️ Сначала получите данные о видео")
+        else:
+            st.info("🚧 Функция в разработке")
 
 # Footer с информацией
 st.markdown("---")
