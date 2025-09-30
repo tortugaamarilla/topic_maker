@@ -27,8 +27,12 @@ if 'thumbnail_text' not in st.session_state:
     st.session_state.thumbnail_text = ""
 if 'transcript' not in st.session_state:
     st.session_state.transcript = ""
+if 'transcript_with_timestamps' not in st.session_state:
+    st.session_state.transcript_with_timestamps = ""
 if 'selected_model' not in st.session_state:
     st.session_state.selected_model = "Claude Opus 4"
+if 'show_timestamps' not in st.session_state:
+    st.session_state.show_timestamps = False
 
 # Функция для извлечения ID видео из URL YouTube
 def extract_video_id(url):
@@ -98,18 +102,37 @@ def get_video_transcript(video_id):
         # Получаем транскрипцию напрямую
         transcript_data = api.fetch(video_id)
         
-        # Собираем весь текст транскрипции
+        # Собираем текст транскрипции в двух форматах
         if transcript_data:
-            # transcript_data - это список объектов с полями text, start, duration
-            # Каждый элемент - это отдельная фраза/строка в YouTube
-            # Объединяем их через перенос строки, чтобы сохранить структуру
+            # Версия без временных меток
             full_text = '\n'.join([str(entry.text) if hasattr(entry, 'text') else str(entry.get('text', '')) for entry in transcript_data])
-            return full_text
+            
+            # Версия с временными метками
+            def format_time(seconds):
+                """Форматирует время в формат MM:SS или HH:MM:SS"""
+                hours = int(seconds // 3600)
+                minutes = int((seconds % 3600) // 60)
+                secs = int(seconds % 60)
+                if hours > 0:
+                    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+                else:
+                    return f"{minutes:02d}:{secs:02d}"
+            
+            text_with_timestamps = []
+            for entry in transcript_data:
+                start_time = entry.start if hasattr(entry, 'start') else entry.get('start', 0)
+                text = str(entry.text) if hasattr(entry, 'text') else str(entry.get('text', ''))
+                text_with_timestamps.append(f"[{format_time(start_time)}] {text}")
+            
+            full_text_with_timestamps = '\n'.join(text_with_timestamps)
+            
+            return full_text, full_text_with_timestamps
         else:
-            return "Транскрипция недоступна для этого видео"
+            return "Транскрипция недоступна для этого видео", "Транскрипция недоступна для этого видео"
             
     except Exception as e:
-        return f"Не удалось получить транскрипцию: {str(e)[:200]}"
+        error_msg = f"Не удалось получить транскрипцию: {str(e)[:200]}"
+        return error_msg, error_msg
 
 # Функция для получения текста с превью через Claude API
 def get_thumbnail_text(video_id):
@@ -251,8 +274,9 @@ if submitted and video_input:
                 st.success("✅ Текст с превью получен")
             
             with st.spinner("📄 Получение транскрипции..."):
-                transcript = get_video_transcript(video_id)
+                transcript, transcript_with_timestamps = get_video_transcript(video_id)
                 st.session_state.transcript = transcript if transcript else ""
+                st.session_state.transcript_with_timestamps = transcript_with_timestamps if transcript_with_timestamps else ""
                 st.success("✅ Транскрипция получена")
             
             st.balloons()
@@ -277,7 +301,7 @@ with data_container:
         st.text_area(
             "**📝 Заголовок видео**",
             value=current_title,
-            height=100,
+            height=200,  # Увеличено с 100 до 200
             disabled=False,  # Делаем поле редактируемым
             key=f"title_display_{hash(current_title)}"  # Уникальный ключ на основе контента
         )
@@ -287,19 +311,32 @@ with data_container:
         st.text_area(
             "**🖼️ Текст с превью**",
             value=current_thumbnail,
-            height=100,
+            height=200,  # Увеличено с 100 до 200
             disabled=False,  # Делаем поле редактируемым
             key=f"thumbnail_display_{hash(current_thumbnail)}"
         )
     
     with col3:
-        current_transcript = st.session_state.get('transcript', '')
+        # Чекбокс для временных меток
+        show_timestamps = st.checkbox(
+            "Сохранять временные метки",
+            value=st.session_state.show_timestamps,
+            key="timestamps_checkbox"
+        )
+        st.session_state.show_timestamps = show_timestamps
+        
+        # Выбираем какую версию транскрипции показывать
+        if show_timestamps:
+            current_transcript = st.session_state.get('transcript_with_timestamps', '')
+        else:
+            current_transcript = st.session_state.get('transcript', '')
+        
         st.text_area(
             "**📄 Транскрипция видео референса**",
             value=current_transcript,
-            height=100,
+            height=200,  # Увеличено с 100 до 200
             disabled=False,  # Делаем поле редактируемым
-            key=f"transcript_display_{hash(current_transcript)}"
+            key=f"transcript_display_{hash(current_transcript)}_{show_timestamps}"
         )
 
 # Секция аннотаций
