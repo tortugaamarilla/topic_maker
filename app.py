@@ -608,11 +608,11 @@ with data_container:
     with col_field1:
         current_title = st.session_state.get('video_title', '')
         st.text_input(
-            "",
+            "Заголовок видео",  # Добавляем непустую метку
             value=current_title,
             disabled=False,  # Делаем поле редактируемым
             key=f"title_display_{hash(current_title)}",
-            label_visibility="collapsed"
+            label_visibility="collapsed"  # Скрываем метку
         )
     
     # Текст с превью - уменьшенное многострочное поле
@@ -622,12 +622,12 @@ with data_container:
     with col_field2:
         current_thumbnail = st.session_state.get('thumbnail_text', '')
         st.text_area(
-            "",
+            "Текст с превью",  # Добавляем непустую метку
             value=current_thumbnail,
             height=50,  # Уменьшено в 4 раза (было 200)
             disabled=False,  # Делаем поле редактируемым
             key=f"thumbnail_display_{hash(current_thumbnail)}",
-            label_visibility="collapsed"
+            label_visibility="collapsed"  # Скрываем метку
         )
     
     # Транскрипция видео - увеличенное поле
@@ -649,12 +649,12 @@ with data_container:
             current_transcript = st.session_state.get('transcript', '')
         
         st.text_area(
-            "",
+            "Транскрипция",  # Добавляем непустую метку
             value=current_transcript,
             height=300,  # Увеличено в 1.5 раза (было 200)
             disabled=False,  # Делаем поле редактируемым
             key=f"transcript_display_{hash(current_transcript)}_{show_timestamps}",
-            label_visibility="collapsed"
+            label_visibility="collapsed"  # Скрываем метку
         )
 
 # Секция аннотаций
@@ -729,7 +729,7 @@ with col1_btn:
                                 st.success(f"✅ Синопсис референса создан ({len(synopsis)} символов)")
                                 # Показываем результат в expander
                                 with st.expander("📄 Полученный синопсис", expanded=True):
-                                    st.text_area("", value=synopsis, height=400, key="synopsis_orig_result_2")
+                                    st.text_area("Синопсис", value=synopsis, height=400, key="synopsis_orig_result_2", label_visibility="collapsed")
         else:
             # Есть транскрипция - создаем синопсис
             with st.spinner("🤖 Создаю синопсис референса..."):
@@ -741,7 +741,7 @@ with col1_btn:
                     st.success(f"✅ Синопсис референса создан ({len(synopsis)} символов)")
                     # Показываем результат в expander для немедленного просмотра
                     with st.expander("📄 Полученный синопсис (скопируйте при необходимости)", expanded=True):
-                        st.text_area("", value=synopsis, height=400, key="synopsis_orig_result")
+                        st.text_area("Синопсис", value=synopsis, height=400, key="synopsis_orig_result", label_visibility="collapsed")
                     st.info("💡 Синопсис сохранен. Обновите страницу (F5) для отображения в основном поле или скопируйте текст выше.")
 
 # Синопсис изменённый - заголовок и кнопка в одной строке
@@ -796,7 +796,7 @@ with col2_btn:
                                             st.session_state.synopsis_red = synopsis_red
                                             st.success(f"✅ Синопсис изменённый создан ({len(synopsis_red)} символов)")
                                             with st.expander("📄 Полученный синопсис", expanded=True):
-                                                st.text_area("", value=synopsis_red, height=400, key="synopsis_red_result_1")
+                                                st.text_area("Синопсис изменённый", value=synopsis_red, height=400, key="synopsis_red_result_1", label_visibility="collapsed")
             else:
                 # Есть транскрипция, но нет оригинального синопсиса - создаем его
                 with st.spinner("🤖 Создаю синопсис референса..."):
@@ -816,7 +816,7 @@ with col2_btn:
                                 st.session_state.synopsis_red = synopsis_red
                                 st.success(f"✅ Синопсис изменённый создан ({len(synopsis_red)} символов)")
                                 with st.expander("📄 Полученный синопсис", expanded=True):
-                                    st.text_area("", value=synopsis_red, height=400, key="synopsis_red_result_2")
+                                    st.text_area("Синопсис изменённый", value=synopsis_red, height=400, key="synopsis_red_result_2", label_visibility="collapsed")
         else:
             # Если есть оригинальный синопсис, создаем измененный
             with st.spinner("🤖 Создаю изменённый синопсис..."):
@@ -827,7 +827,7 @@ with col2_btn:
                     st.session_state.synopsis_red = synopsis_red
                     st.success(f"✅ Синопсис изменённый создан ({len(synopsis_red)} символов)")
                     with st.expander("📄 Полученный синопсис", expanded=True):
-                        st.text_area("", value=synopsis_red, height=400, key="synopsis_red_result_3")
+                        st.text_area("Синопсис изменённый", value=synopsis_red, height=400, key="synopsis_red_result_3", label_visibility="collapsed")
 
 # Секция сценария
 st.markdown("---")
