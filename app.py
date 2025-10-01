@@ -401,8 +401,8 @@ def create_synopsis_orig():
                     st.info(f"⏳ Попытка {attempt + 1}/{max_retries}. Ожидание {wait_time} секунд...")
                     time.sleep(wait_time)
                 
-                # Отправляем запрос к Claude с правильным лимитом токенов
-                message = client.messages.create(
+                # Отправляем запрос к Claude с правильным лимитом токенов и streaming
+                stream = client.messages.create(
                     model=get_claude_model(),  # Используем модель, выбранную пользователем
                     max_tokens=get_max_tokens(),  # Используем правильный лимит для модели
                     temperature=0.7,  # Добавляем температуру для более стабильных результатов
@@ -412,10 +412,17 @@ def create_synopsis_orig():
                             "role": "user",
                             "content": transcript
                         }
-                    ]
+                    ],
+                    stream=True  # Используем streaming для больших запросов
                 )
                 
-                result = message.content[0].text
+                # Собираем результат из streaming response
+                result = ""
+                for event in stream:
+                    if event.type == "content_block_delta":
+                        result += event.delta.text
+                    elif event.type == "message_stop":
+                        break
                 print(f"DEBUG: Получен синопсис длиной {len(result)} символов")
                 
                 # Сохраняем историю запроса для синопсиса референса
@@ -503,8 +510,8 @@ def create_synopsis_red(synopsis_orig):
                     st.info(f"⏳ Попытка {attempt + 1}/{max_retries}. Ожидание {wait_time} секунд...")
                     time.sleep(wait_time)
                 
-                # Отправляем запрос к Claude
-                message = client.messages.create(
+                # Отправляем запрос к Claude с streaming
+                stream = client.messages.create(
                     model=get_claude_model(),  # Используем модель, выбранную пользователем
                     max_tokens=get_max_tokens(),  # Используем правильный лимит для модели
                     temperature=0.7,
@@ -514,10 +521,17 @@ def create_synopsis_red(synopsis_orig):
                             "role": "user",
                             "content": synopsis_orig
                         }
-                    ]
+                    ],
+                    stream=True  # Используем streaming для больших запросов
                 )
                 
-                result = message.content[0].text
+                # Собираем результат из streaming response
+                result = ""
+                for event in stream:
+                    if event.type == "content_block_delta":
+                        result += event.delta.text
+                    elif event.type == "message_stop":
+                        break
                 print(f"DEBUG: Получен синопсис длиной {len(result)} символов")
                 
                 # Сохраняем историю запроса для измененного синопсиса
