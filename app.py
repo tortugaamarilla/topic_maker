@@ -11,6 +11,15 @@ from googleapiclient.errors import HttpError
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 import anthropic
 
+# Параметры прокси для получения транскрипции
+PROXY_HOST = "185.241.71.106"
+PROXY_PORT = 8000
+PROXY_USERNAME = "9wXb0y"
+PROXY_PASSWORD = "oTUBGk"
+
+def _get_proxy_url():
+    return f"http://{PROXY_USERNAME}:{PROXY_PASSWORD}@{PROXY_HOST}:{PROXY_PORT}"
+
 # Настройка страницы
 st.set_page_config(
     page_title="Topic Maker",
@@ -60,6 +69,8 @@ if 'scenario' not in st.session_state:
 # Поле для хранения температуры
 if 'temperature' not in st.session_state:
     st.session_state.temperature = 0.7
+if 'use_proxy' not in st.session_state:
+    st.session_state.use_proxy = False
 
 # Функция для извлечения ID видео из URL YouTube
 def extract_video_id(url):
@@ -122,7 +133,24 @@ def get_video_title(video_id):
 
 # Функция для получения транскрипции видео
 def get_video_transcript(video_id):
+    # Включение прокси при необходимости (только на время запроса)
+    proxy_url = None
+    # Сохраняем текущее окружение прокси (верхний и нижний регистры)
+    old_http_proxy = os.environ.get('HTTP_PROXY')
+    old_https_proxy = os.environ.get('HTTPS_PROXY')
+    old_http_proxy_l = os.environ.get('http_proxy')
+    old_https_proxy_l = os.environ.get('https_proxy')
+    old_all_proxy = os.environ.get('ALL_PROXY')
+    old_all_proxy_l = os.environ.get('all_proxy')
     try:
+        if st.session_state.get('use_proxy', False):
+            proxy_url = _get_proxy_url()
+            os.environ['HTTP_PROXY'] = proxy_url
+            os.environ['HTTPS_PROXY'] = proxy_url
+            os.environ['http_proxy'] = proxy_url
+            os.environ['https_proxy'] = proxy_url
+            os.environ['ALL_PROXY'] = proxy_url
+            os.environ['all_proxy'] = proxy_url
         # Создаем экземпляр API
         api = YouTubeTranscriptApi()
         
@@ -147,12 +175,27 @@ def get_video_transcript(video_id):
         # Пробуем получить транскрипцию для каждого языка
         for lang in languages_to_try:
             try:
-                if lang is None:
-                    # Пробуем без указания языка - должно взять любую доступную
-                    transcript_data = api.fetch(video_id)
+                if proxy_url:
+                    # При включенном прокси используем явную передачу прокси в библиотеку
+                    proxies = {"http": proxy_url, "https": proxy_url}
+                    if lang is None:
+                        transcript_data = YouTubeTranscriptApi.get_transcript(
+                            video_id,
+                            proxies=proxies
+                        )
+                    else:
+                        transcript_data = YouTubeTranscriptApi.get_transcript(
+                            video_id,
+                            languages=lang,
+                            proxies=proxies
+                        )
                 else:
-                    # Пробуем с конкретным языком
-                    transcript_data = api.fetch(video_id, languages=lang)
+                    if lang is None:
+                        # Пробуем без указания языка - должно взять любую доступную
+                        transcript_data = api.fetch(video_id)
+                    else:
+                        # Пробуем с конкретным языком
+                        transcript_data = api.fetch(video_id, languages=lang)
                 
                 if transcript_data:
                     break  # Если успешно получили, выходим из цикла
@@ -178,11 +221,20 @@ def get_video_transcript(video_id):
         
         # Собираем текст транскрипции в двух форматах
         if transcript_data:
-            # transcript_data - это объект FetchedTranscript, который можно итерировать
-            # Каждый элемент имеет атрибуты: text, start, duration
+            # Унификация доступа к полям для двух вариантов (list[dict] и FetchedTranscript)
+            def _get_text(entry):
+                try:
+                    return str(entry.get('text', ''))
+                except Exception:
+                    return str(getattr(entry, 'text', ''))
+            def _get_start(entry):
+                try:
+                    return float(entry.get('start', 0))
+                except Exception:
+                    return float(getattr(entry, 'start', 0))
             
             # Версия без временных меток
-            full_text = '\n'.join([str(entry.text) for entry in transcript_data])
+            full_text = '\n'.join([_get_text(entry) for entry in transcript_data])
             
             # Версия с временными метками
             def format_time(seconds):
@@ -197,8 +249,8 @@ def get_video_transcript(video_id):
             
             text_with_timestamps = []
             for entry in transcript_data:
-                start_time = entry.start
-                text = str(entry.text)
+                start_time = _get_start(entry)
+                text = _get_text(entry)
                 text_with_timestamps.append(f"[{format_time(start_time)}] {text}")
             
             full_text_with_timestamps = '\n'.join(text_with_timestamps)
@@ -215,6 +267,35 @@ def get_video_transcript(video_id):
         else:
             error_msg = f"Не удалось получить транскрипцию: {error_str[:200]}"
             return error_msg, error_msg
+    finally:
+        # Восстанавливаем окружение прокси
+        if proxy_url is not None:
+            # Восстановление верхнего регистра
+            if old_http_proxy is None:
+                os.environ.pop('HTTP_PROXY', None)
+            else:
+                os.environ['HTTP_PROXY'] = old_http_proxy
+            if old_https_proxy is None:
+                os.environ.pop('HTTPS_PROXY', None)
+            else:
+                os.environ['HTTPS_PROXY'] = old_https_proxy
+            # Восстановление нижнего регистра
+            if old_http_proxy_l is None:
+                os.environ.pop('http_proxy', None)
+            else:
+                os.environ['http_proxy'] = old_http_proxy_l
+            if old_https_proxy_l is None:
+                os.environ.pop('https_proxy', None)
+            else:
+                os.environ['https_proxy'] = old_https_proxy_l
+            if old_all_proxy is None:
+                os.environ.pop('ALL_PROXY', None)
+            else:
+                os.environ['ALL_PROXY'] = old_all_proxy
+            if old_all_proxy_l is None:
+                os.environ.pop('all_proxy', None)
+            else:
+                os.environ['all_proxy'] = old_all_proxy_l
 
 # Функция для получения текста с превью через Claude API
 def get_thumbnail_text(video_id):
@@ -850,6 +931,13 @@ with st.sidebar:
         available_models,
         index=4,  # По умолчанию Claude Sonnet 3.7
         key="preview_model_select"
+    )
+    
+    # Опция использования прокси для получения транскрипции
+    st.session_state.use_proxy = st.checkbox(
+        "Использовать прокси для транскрипции",
+        value=st.session_state.use_proxy,
+        key="use_proxy_checkbox"
     )
     
     
