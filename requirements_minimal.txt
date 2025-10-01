@@ -1,5 +1,0 @@
-streamlit
-anthropic
-youtube-transcript-api
-google-api-python-client
-Pillow
