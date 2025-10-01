@@ -57,6 +57,9 @@ if 'annotation_orig' not in st.session_state:
 # Поле для хранения сценария
 if 'scenario' not in st.session_state:
     st.session_state.scenario = ""
+# Поле для хранения температуры
+if 'temperature' not in st.session_state:
+    st.session_state.temperature = 0.7
 
 # Функция для извлечения ID видео из URL YouTube
 def extract_video_id(url):
@@ -401,7 +404,7 @@ def create_synopsis_orig():
                 stream = client.messages.create(
                     model=get_claude_model(),  # Используем модель, выбранную пользователем
                     max_tokens=get_max_tokens(),  # Используем правильный лимит для модели
-                    temperature=0.7,  # Добавляем температуру для более стабильных результатов
+                    temperature=st.session_state.get('temperature', 0.7),  # Используем температуру из настроек
                     system=prompt_text,
                     messages=[
                         {
@@ -426,7 +429,7 @@ def create_synopsis_orig():
                     'request': {
                         'model': get_claude_model(),
                         'max_tokens': get_max_tokens(),
-                        'temperature': 0.7,
+                        'temperature': st.session_state.get('temperature', 0.7),
                         'system_prompt': prompt_text[:500] + "..." if len(prompt_text) > 500 else prompt_text,
                         'user_message': transcript[:500] + "..." if len(transcript) > 500 else transcript,
                         'full_system_prompt': prompt_text,
@@ -510,7 +513,7 @@ def create_synopsis_red(synopsis_orig):
                 stream = client.messages.create(
                     model=get_claude_model(),  # Используем модель, выбранную пользователем
                     max_tokens=get_max_tokens(),  # Используем правильный лимит для модели
-                    temperature=0.7,
+                    temperature=st.session_state.get('temperature', 0.7),
                     system=prompt_text,
                     messages=[
                         {
@@ -535,7 +538,7 @@ def create_synopsis_red(synopsis_orig):
                     'request': {
                         'model': get_claude_model(),
                         'max_tokens': get_max_tokens(),
-                        'temperature': 0.7,
+                        'temperature': st.session_state.get('temperature', 0.7),
                         'system_prompt': prompt_text[:500] + "..." if len(prompt_text) > 500 else prompt_text,
                         'user_message': synopsis_orig[:500] + "..." if len(synopsis_orig) > 500 else synopsis_orig,
                         'full_system_prompt': prompt_text,
@@ -619,7 +622,7 @@ def create_annotation_orig():
                 stream = client.messages.create(
                     model=get_claude_model(),
                     max_tokens=get_max_tokens(),
-                    temperature=0.7,
+                    temperature=st.session_state.get('temperature', 0.7),
                     system=prompt_text,
                     messages=[
                         {
@@ -644,7 +647,7 @@ def create_annotation_orig():
                     'request': {
                         'model': get_claude_model(),
                         'max_tokens': get_max_tokens(),
-                        'temperature': 0.7,
+                        'temperature': st.session_state.get('temperature', 0.7),
                         'system_prompt': prompt_text[:500] + "..." if len(prompt_text) > 500 else prompt_text,
                         'user_message': transcript[:500] + "..." if len(transcript) > 500 else transcript,
                         'full_system_prompt': prompt_text,
@@ -729,7 +732,7 @@ def create_scenario():
                 stream = client.messages.create(
                     model=get_claude_model(),
                     max_tokens=get_max_tokens(),
-                    temperature=0.7,
+                    temperature=st.session_state.get('temperature', 0.7),
                     system=prompt_text,
                     messages=[
                         {
@@ -754,7 +757,7 @@ def create_scenario():
                     'request': {
                         'model': get_claude_model(),
                         'max_tokens': get_max_tokens(),
-                        'temperature': 0.7,
+                        'temperature': st.session_state.get('temperature', 0.7),
                         'system_prompt': prompt_text[:500] + "..." if len(prompt_text) > 500 else prompt_text,
                         'user_message': transcript[:500] + "..." if len(transcript) > 500 else transcript,
                         'full_system_prompt': prompt_text,
@@ -819,15 +822,26 @@ with st.sidebar:
         key="main_model_select"
     )
     
+    # Ползунок температуры
+    temperature_value = st.slider(
+        "Температура:",
+        min_value=0.0,
+        max_value=1.0,
+        value=st.session_state.temperature,
+        step=0.1,
+        help="Контролирует случайность ответов. 0 - детерминированные ответы, 1 - максимальная креативность"
+    )
+    st.session_state.temperature = temperature_value
+    
     # Отображение информации о модели
     model_info = get_model_info()
     if model_info:
         with st.container():
             st.markdown("**Максимум токенов:**")
-            st.caption(f"• Входящее окно: {model_info['input_window']}")
-            st.caption(f"• Выходящее окно: {model_info['output_window']}")
-            st.caption(f"• Стоимость за 1M токенов входящих: {model_info['input_cost']}")
-            st.caption(f"• Стоимость за 1M токенов выходящих: {model_info['output_cost']}")
+            st.caption(f"Входящее окно: {model_info['input_window']}")
+            st.caption(f"Выходящее окно: {model_info['output_window']}")
+            st.caption(f"Стоимость за 1M токенов входящих: {model_info['input_cost']}")
+            st.caption(f"Стоимость за 1M токенов выходящих: {model_info['output_cost']}")
     
     # Выбор модели для превью
     st.markdown("### Модель Claude для превью")
