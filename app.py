@@ -583,6 +583,332 @@ def create_synopsis_red(synopsis_orig):
     except Exception as e:
         return None, f"Ошибка при создании измененного синопсиса: {str(e)}"
 
+# Функция для создания аннотации референса
+def create_annotation_orig():
+    """Создает аннотацию на основе транскрипции видео"""
+    try:
+        # Проверяем наличие транскрипции
+        transcript = st.session_state.get('transcript', '')
+        if not transcript:
+            return None, "Нет транскрипции для создания аннотации"
+        
+        # Загружаем промпт
+        try:
+            with open("prompt_annotation_orig.txt", "r", encoding="utf-8") as file:
+                prompt_text = file.read()
+        except FileNotFoundError:
+            return None, "Не найден файл prompt_annotation_orig.txt"
+        
+        # Проверяем наличие API ключа
+        if "ANTHROPIC_API_KEY" not in st.secrets:
+            return None, "API ключ Anthropic не найден в секретах"
+        
+        # Инициализируем клиент Claude
+        api_key = str(st.secrets["ANTHROPIC_API_KEY"])
+        client = anthropic.Anthropic(api_key=api_key)
+        
+        # Попытки отправки запроса с обработкой rate limit
+        max_retries = 5
+        base_delay = 10
+        
+        for attempt in range(max_retries):
+            try:
+                # Используем экспоненциальную задержку между попытками
+                if attempt > 0:
+                    wait_time = base_delay * (2 ** (attempt - 1))
+                    st.info(f"⏳ Попытка {attempt + 1}/{max_retries}. Ожидание {wait_time} секунд...")
+                    time.sleep(wait_time)
+                
+                # Отправляем запрос к Claude с streaming
+                stream = client.messages.create(
+                    model=get_claude_model(),
+                    max_tokens=get_max_tokens(),
+                    temperature=0.7,
+                    system=prompt_text,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": transcript
+                        }
+                    ],
+                    stream=True
+                )
+                
+                # Собираем результат из streaming response
+                result = ""
+                for event in stream:
+                    if event.type == "content_block_delta":
+                        result += event.delta.text
+                    elif event.type == "message_stop":
+                        break
+                print(f"DEBUG: Получена аннотация длиной {len(result)} символов")
+                
+                # Сохраняем историю запроса для аннотации референса
+                st.session_state.api_history_annotation_orig = {
+                    'request': {
+                        'model': get_claude_model(),
+                        'max_tokens': get_max_tokens(),
+                        'temperature': 0.7,
+                        'system_prompt': prompt_text[:500] + "..." if len(prompt_text) > 500 else prompt_text,
+                        'user_message': transcript[:500] + "..." if len(transcript) > 500 else transcript,
+                        'full_system_prompt': prompt_text,
+                        'full_user_message': transcript
+                    },
+                    'response': result
+                }
+                
+                return result, None
+                
+            except anthropic.RateLimitError as e:
+                error_details = str(e)
+                if "input tokens" in error_details.lower():
+                    if attempt < max_retries - 1:
+                        st.warning(f"⚠️ Превышен лимит входных токенов. Попытка {attempt + 2}/{max_retries} через некоторое время...")
+                        continue
+                    else:
+                        return None, "Текст слишком большой. Попробуйте использовать видео с меньшей транскрипцией или подождите несколько минут."
+                else:
+                    if attempt < max_retries - 1:
+                        continue
+                    else:
+                        return None, "Превышен лимит запросов API. Пожалуйста, подождите 5-10 минут и попробуйте снова."
+                        
+            except Exception as e:
+                error_str = str(e)
+                if "rate_limit" in error_str.lower() or "429" in error_str:
+                    if attempt < max_retries - 1:
+                        continue
+                    else:
+                        return None, "Превышен лимит запросов. Подождите 5-10 минут перед следующей попыткой."
+                elif "timeout" in error_str.lower():
+                    if attempt < max_retries - 1:
+                        st.warning("⏱️ Таймаут запроса. Повторная попытка...")
+                        continue
+                    else:
+                        return None, "Превышено время ожидания ответа. Попробуйте еще раз."
+                else:
+                    return None, f"Ошибка: {error_str[:200]}"
+                    
+    except Exception as e:
+        return None, f"Ошибка при создании аннотации: {str(e)}"
+
+# Функция для создания измененной аннотации
+def create_annotation_red(annotation_orig):
+    """Создает измененную аннотацию на основе оригинальной аннотации"""
+    try:
+        # Проверяем наличие оригинальной аннотации
+        if not annotation_orig:
+            return None, "Нет оригинальной аннотации для изменения"
+        
+        # Загружаем промпт
+        try:
+            with open("prompt_annotation_red.txt", "r", encoding="utf-8") as file:
+                prompt_text = file.read()
+        except FileNotFoundError:
+            return None, "Не найден файл prompt_annotation_red.txt"
+        
+        # Проверяем наличие API ключа
+        if "ANTHROPIC_API_KEY" not in st.secrets:
+            return None, "API ключ Anthropic не найден в секретах"
+        
+        # Инициализируем клиент Claude
+        api_key = str(st.secrets["ANTHROPIC_API_KEY"])
+        client = anthropic.Anthropic(api_key=api_key)
+        
+        # Попытки отправки запроса с обработкой rate limit
+        max_retries = 5
+        base_delay = 10
+        
+        for attempt in range(max_retries):
+            try:
+                # Используем экспоненциальную задержку между попытками
+                if attempt > 0:
+                    wait_time = base_delay * (2 ** (attempt - 1))
+                    st.info(f"⏳ Попытка {attempt + 1}/{max_retries}. Ожидание {wait_time} секунд...")
+                    time.sleep(wait_time)
+                
+                # Отправляем запрос к Claude с streaming
+                stream = client.messages.create(
+                    model=get_claude_model(),
+                    max_tokens=get_max_tokens(),
+                    temperature=0.7,
+                    system=prompt_text,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": annotation_orig
+                        }
+                    ],
+                    stream=True
+                )
+                
+                # Собираем результат из streaming response
+                result = ""
+                for event in stream:
+                    if event.type == "content_block_delta":
+                        result += event.delta.text
+                    elif event.type == "message_stop":
+                        break
+                print(f"DEBUG: Получена измененная аннотация длиной {len(result)} символов")
+                
+                # Сохраняем историю запроса для измененной аннотации
+                st.session_state.api_history_annotation_red = {
+                    'request': {
+                        'model': get_claude_model(),
+                        'max_tokens': get_max_tokens(),
+                        'temperature': 0.7,
+                        'system_prompt': prompt_text[:500] + "..." if len(prompt_text) > 500 else prompt_text,
+                        'user_message': annotation_orig[:500] + "..." if len(annotation_orig) > 500 else annotation_orig,
+                        'full_system_prompt': prompt_text,
+                        'full_user_message': annotation_orig
+                    },
+                    'response': result
+                }
+                
+                return result, None
+                
+            except anthropic.RateLimitError as e:
+                error_details = str(e)
+                if "input tokens" in error_details.lower():
+                    if attempt < max_retries - 1:
+                        st.warning(f"⚠️ Превышен лимит входных токенов. Попытка {attempt + 2}/{max_retries} через некоторое время...")
+                        continue
+                    else:
+                        return None, "Аннотация слишком большая. Подождите несколько минут и попробуйте снова."
+                else:
+                    if attempt < max_retries - 1:
+                        continue
+                    else:
+                        return None, "Превышен лимит запросов API. Пожалуйста, подождите 5-10 минут и попробуйте снова."
+                        
+            except Exception as e:
+                error_str = str(e)
+                if "rate_limit" in error_str.lower() or "429" in error_str:
+                    if attempt < max_retries - 1:
+                        continue
+                    else:
+                        return None, "Превышен лимит запросов. Подождите 5-10 минут перед следующей попыткой."
+                elif "timeout" in error_str.lower():
+                    if attempt < max_retries - 1:
+                        st.warning("⏱️ Таймаут запроса. Повторная попытка...")
+                        continue
+                    else:
+                        return None, "Превышено время ожидания ответа. Попробуйте еще раз."
+                else:
+                    return None, f"Ошибка: {error_str[:200]}"
+                    
+    except Exception as e:
+        return None, f"Ошибка при создании измененной аннотации: {str(e)}"
+
+# Функция для создания сценария
+def create_scenario():
+    """Создает сценарий на основе транскрипции видео"""
+    try:
+        # Проверяем наличие транскрипции
+        transcript = st.session_state.get('transcript', '')
+        if not transcript:
+            return None, "Нет транскрипции для создания сценария"
+        
+        # Загружаем промпт
+        try:
+            with open("prompt scenario.txt", "r", encoding="utf-8") as file:
+                prompt_text = file.read()
+        except FileNotFoundError:
+            return None, "Не найден файл prompt scenario.txt"
+        
+        # Проверяем наличие API ключа
+        if "ANTHROPIC_API_KEY" not in st.secrets:
+            return None, "API ключ Anthropic не найден в секретах"
+        
+        # Инициализируем клиент Claude
+        api_key = str(st.secrets["ANTHROPIC_API_KEY"])
+        client = anthropic.Anthropic(api_key=api_key)
+        
+        # Попытки отправки запроса с обработкой rate limit
+        max_retries = 5
+        base_delay = 10
+        
+        for attempt in range(max_retries):
+            try:
+                # Используем экспоненциальную задержку между попытками
+                if attempt > 0:
+                    wait_time = base_delay * (2 ** (attempt - 1))
+                    st.info(f"⏳ Попытка {attempt + 1}/{max_retries}. Ожидание {wait_time} секунд...")
+                    time.sleep(wait_time)
+                
+                # Отправляем запрос к Claude с streaming
+                stream = client.messages.create(
+                    model=get_claude_model(),
+                    max_tokens=get_max_tokens(),
+                    temperature=0.7,
+                    system=prompt_text,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": transcript
+                        }
+                    ],
+                    stream=True
+                )
+                
+                # Собираем результат из streaming response
+                result = ""
+                for event in stream:
+                    if event.type == "content_block_delta":
+                        result += event.delta.text
+                    elif event.type == "message_stop":
+                        break
+                print(f"DEBUG: Получен сценарий длиной {len(result)} символов")
+                
+                # Сохраняем историю запроса для сценария
+                st.session_state.api_history_scenario = {
+                    'request': {
+                        'model': get_claude_model(),
+                        'max_tokens': get_max_tokens(),
+                        'temperature': 0.7,
+                        'system_prompt': prompt_text[:500] + "..." if len(prompt_text) > 500 else prompt_text,
+                        'user_message': transcript[:500] + "..." if len(transcript) > 500 else transcript,
+                        'full_system_prompt': prompt_text,
+                        'full_user_message': transcript
+                    },
+                    'response': result
+                }
+                
+                return result, None
+                
+            except anthropic.RateLimitError as e:
+                error_details = str(e)
+                if "input tokens" in error_details.lower():
+                    if attempt < max_retries - 1:
+                        st.warning(f"⚠️ Превышен лимит входных токенов. Попытка {attempt + 2}/{max_retries} через некоторое время...")
+                        continue
+                    else:
+                        return None, "Текст слишком большой. Попробуйте использовать видео с меньшей транскрипцией или подождите несколько минут."
+                else:
+                    if attempt < max_retries - 1:
+                        continue
+                    else:
+                        return None, "Превышен лимит запросов API. Пожалуйста, подождите 5-10 минут и попробуйте снова."
+                        
+            except Exception as e:
+                error_str = str(e)
+                if "rate_limit" in error_str.lower() or "429" in error_str:
+                    if attempt < max_retries - 1:
+                        continue
+                    else:
+                        return None, "Превышен лимит запросов. Подождите 5-10 минут перед следующей попыткой."
+                elif "timeout" in error_str.lower():
+                    if attempt < max_retries - 1:
+                        st.warning("⏱️ Таймаут запроса. Повторная попытка...")
+                        continue
+                    else:
+                        return None, "Превышено время ожидания ответа. Попробуйте еще раз."
+                else:
+                    return None, f"Ошибка: {error_str[:200]}"
+                    
+    except Exception as e:
+        return None, f"Ошибка при создании сценария: {str(e)}"
+
 # Проверяем, нужна ли перезагрузка страницы
 if st.session_state.get('need_rerun', False):
     st.session_state.need_rerun = False
@@ -845,10 +1171,51 @@ if st.session_state.get('annotation_orig', ''):
 
 # Обработка нажатия кнопки создания аннотации референса
 if create_annotation_orig_clicked:
-    if not st.session_state.video_id:
-        st.warning("⚠️ Сначала получите данные о видео")
+    # Проверяем наличие транскрипции
+    if not st.session_state.get('transcript', ''):
+        # Если нет транскрипции, проверяем video_id
+        if not st.session_state.video_id:
+            st.warning("⚠️ Данные о видео не найдены. Пожалуйста, сначала введите ссылку на видео и нажмите 'Получить данные референса'")
+        else:
+            # Есть video_id, но нет транскрипции - получаем все данные
+            with st.spinner("📝 Получение данных о видео..."):
+                # Получаем заголовок
+                title = get_video_title(st.session_state.video_id)
+                st.session_state.video_title = title if title else ""
+                
+                # Получаем текст с превью
+                thumbnail_text = get_thumbnail_text(st.session_state.video_id)
+                st.session_state.thumbnail_text = thumbnail_text if thumbnail_text else ""
+                
+                # Получаем транскрипцию
+                transcript, transcript_with_timestamps = get_video_transcript(st.session_state.video_id)
+                st.session_state.transcript = transcript if transcript else ""
+                st.session_state.transcript_with_timestamps = transcript_with_timestamps if transcript_with_timestamps else ""
+                
+                if not st.session_state.transcript:
+                    st.error("❌ Не удалось получить транскрипцию видео")
+                else:
+                    st.success("✅ Данные о видео получены")
+                    
+                    # Теперь создаем аннотацию
+                    with st.spinner("🤖 Создаю аннотацию референса..."):
+                        annotation, error = create_annotation_orig()
+                        if error:
+                            st.error(f"❌ {error}")
+                        else:
+                            st.session_state.annotation_orig = annotation
+                            st.success(f"✅ Аннотация референса создана ({len(annotation)} символов)")
+                            st.rerun()
     else:
-        st.info("🚧 Функция в разработке")
+        # Есть транскрипция - создаем аннотацию
+        with st.spinner("🤖 Создаю аннотацию референса..."):
+            annotation, error = create_annotation_orig()
+            if error:
+                st.error(f"❌ {error}")
+            else:
+                st.session_state.annotation_orig = annotation
+                st.success(f"✅ Аннотация референса создана ({len(annotation)} символов)")
+                st.rerun()
 
 # Аннотация изменённая - заголовок и кнопка в одной строке
 col2_header, col2_btn = st.columns([4, 1])
@@ -893,10 +1260,81 @@ if st.session_state.get('annotation_red', ''):
 
 # Обработка нажатия кнопки создания аннотации изменённой
 if create_annotation_red_clicked:
-    if not st.session_state.video_id:
-        st.warning("⚠️ Сначала получите данные о видео")
+    # Проверяем наличие оригинальной аннотации
+    if not st.session_state.get('annotation_orig', ''):
+        # Если нет оригинальной аннотации, проверяем транскрипцию
+        if not st.session_state.get('transcript', ''):
+            # Если нет транскрипции, проверяем video_id
+            if not st.session_state.video_id:
+                st.warning("⚠️ Данные о видео не найдены. Пожалуйста, сначала введите ссылку на видео и нажмите 'Получить данные референса'")
+            else:
+                # Есть video_id, но нет транскрипции - получаем все данные
+                with st.spinner("📝 Получение данных о видео..."):
+                    # Получаем заголовок
+                    title = get_video_title(st.session_state.video_id)
+                    st.session_state.video_title = title if title else ""
+                    
+                    # Получаем текст с превью
+                    thumbnail_text = get_thumbnail_text(st.session_state.video_id)
+                    st.session_state.thumbnail_text = thumbnail_text if thumbnail_text else ""
+                    
+                    # Получаем транскрипцию
+                    transcript, transcript_with_timestamps = get_video_transcript(st.session_state.video_id)
+                    st.session_state.transcript = transcript if transcript else ""
+                    st.session_state.transcript_with_timestamps = transcript_with_timestamps if transcript_with_timestamps else ""
+                    
+                    if not st.session_state.transcript:
+                        st.error("❌ Не удалось получить транскрипцию видео")
+                    else:
+                        st.success("✅ Данные о видео получены")
+                        
+                        # Теперь создаем аннотацию референса
+                        with st.spinner("🤖 Создаю аннотацию референса..."):
+                            annotation_orig, error = create_annotation_orig()
+                            if error:
+                                st.error(f"❌ {error}")
+                            else:
+                                st.session_state.annotation_orig = annotation_orig
+                                st.success("✅ Аннотация референса создана")
+                                
+                                # И создаем измененную аннотацию
+                                with st.spinner("🤖 Создаю изменённую аннотацию..."):
+                                    annotation_red, error = create_annotation_red(annotation_orig)
+                                    if error:
+                                        st.error(f"❌ {error}")
+                                    else:
+                                        st.session_state.annotation_red = annotation_red
+                                        st.success(f"✅ Аннотация изменённая создана ({len(annotation_red)} символов)")
+                                        st.rerun()
+        else:
+            # Есть транскрипция, но нет оригинальной аннотации - создаем её
+            with st.spinner("🤖 Создаю аннотацию референса..."):
+                annotation_orig, error = create_annotation_orig()
+                if error:
+                    st.error(f"❌ {error}")
+                else:
+                    st.session_state.annotation_orig = annotation_orig
+                    st.success("✅ Аннотация референса создана")
+                    
+                    # Теперь создаем измененную аннотацию
+                    with st.spinner("🤖 Создаю изменённую аннотацию..."):
+                        annotation_red, error = create_annotation_red(annotation_orig)
+                        if error:
+                            st.error(f"❌ {error}")
+                        else:
+                            st.session_state.annotation_red = annotation_red
+                            st.success(f"✅ Аннотация изменённая создана ({len(annotation_red)} символов)")
+                            st.rerun()
     else:
-        st.info("🚧 Функция в разработке")
+        # Если есть оригинальная аннотация, создаем измененную
+        with st.spinner("🤖 Создаю изменённую аннотацию..."):
+            annotation_red, error = create_annotation_red(st.session_state.annotation_orig)
+            if error:
+                st.error(f"❌ {error}")
+            else:
+                st.session_state.annotation_red = annotation_red
+                st.success(f"✅ Аннотация изменённая создана ({len(annotation_red)} символов)")
+                st.rerun()
 
 # Секция синопсисов
 st.markdown("---")
@@ -1157,10 +1595,51 @@ if st.session_state.get('scenario', ''):
 
 # Обработка нажатия кнопки создания сценария
 if create_scenario_clicked:
-    if not st.session_state.video_id:
-        st.warning("⚠️ Сначала получите данные о видео")
+    # Проверяем наличие транскрипции
+    if not st.session_state.get('transcript', ''):
+        # Если нет транскрипции, проверяем video_id
+        if not st.session_state.video_id:
+            st.warning("⚠️ Данные о видео не найдены. Пожалуйста, сначала введите ссылку на видео и нажмите 'Получить данные референса'")
+        else:
+            # Есть video_id, но нет транскрипции - получаем все данные
+            with st.spinner("📝 Получение данных о видео..."):
+                # Получаем заголовок
+                title = get_video_title(st.session_state.video_id)
+                st.session_state.video_title = title if title else ""
+                
+                # Получаем текст с превью
+                thumbnail_text = get_thumbnail_text(st.session_state.video_id)
+                st.session_state.thumbnail_text = thumbnail_text if thumbnail_text else ""
+                
+                # Получаем транскрипцию
+                transcript, transcript_with_timestamps = get_video_transcript(st.session_state.video_id)
+                st.session_state.transcript = transcript if transcript else ""
+                st.session_state.transcript_with_timestamps = transcript_with_timestamps if transcript_with_timestamps else ""
+                
+                if not st.session_state.transcript:
+                    st.error("❌ Не удалось получить транскрипцию видео")
+                else:
+                    st.success("✅ Данные о видео получены")
+                    
+                    # Теперь создаем сценарий
+                    with st.spinner("🤖 Создаю сценарий..."):
+                        scenario, error = create_scenario()
+                        if error:
+                            st.error(f"❌ {error}")
+                        else:
+                            st.session_state.scenario = scenario
+                            st.success(f"✅ Сценарий создан ({len(scenario)} символов)")
+                            st.rerun()
     else:
-        st.info("🚧 Функция в разработке")
+        # Есть транскрипция - создаем сценарий
+        with st.spinner("🤖 Создаю сценарий..."):
+            scenario, error = create_scenario()
+            if error:
+                st.error(f"❌ {error}")
+            else:
+                st.session_state.scenario = scenario
+                st.success(f"✅ Сценарий создан ({len(scenario)} символов)")
+                st.rerun()
 
 # Footer с информацией
 st.markdown("---")
