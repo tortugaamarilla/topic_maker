@@ -80,6 +80,8 @@ if 'use_proxy' not in st.session_state:
     st.session_state.use_proxy = True
 if 'transcript_method' not in st.session_state:
     st.session_state.transcript_method = "yt-dlp"
+if 'subtitle_language' not in st.session_state:
+    st.session_state.subtitle_language = "en"  # По умолчанию английский
 
 # Функция для извлечения ID видео из URL YouTube
 def extract_video_id(url):
@@ -147,6 +149,9 @@ def get_video_transcript_ytdlp(video_id: str) -> Tuple[str, str]:
     Возвращает: (текст_без_временных_меток, текст_с_временными_метками)
     """
     
+    # Получаем выбранный язык
+    selected_lang = st.session_state.get('subtitle_language', 'en')
+    
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
@@ -156,7 +161,7 @@ def get_video_transcript_ytdlp(video_id: str) -> Tuple[str, str]:
         'writesubtitles': False,  # Не сохраняем файлы
         'writeautomaticsub': False,  # Не сохраняем файлы
         'subtitlesformat': 'json3/srv1/srv2/srv3/ttml/vtt',
-        'subtitleslangs': ['en', 'ru', 'es', 'fr', 'de', 'pt', 'it', 'ja', 'ko', 'zh'],
+        'subtitleslangs': [selected_lang],  # Используем только выбранный язык
         # Дополнительные опции для надежности
         'nocheckcertificate': True,
         'geo_bypass': True,
@@ -184,18 +189,23 @@ def get_video_transcript_ytdlp(video_id: str) -> Tuple[str, str]:
             # Объединяем оба источника
             all_subs = {**automatic_captions, **subtitles}
             
-            # Ищем доступные субтитры по приоритету языков
-            for lang in ['en', 'ru', 'es', 'fr', 'de', 'pt', 'it', 'ja', 'ko', 'zh']:
-                if lang in all_subs and all_subs[lang]:
-                    # Берем первый доступный формат
-                    for sub_format in all_subs[lang]:
-                        if sub_format.get('url'):
-                            return _fetch_and_parse_subtitles(
-                                sub_format['url'], 
-                                sub_format.get('ext', 'json3')
-                            )
+            # Получаем выбранный язык
+            selected_lang = st.session_state.get('subtitle_language', 'en')
             
-            return "Транскрипция недоступна для этого видео", "Транскрипция недоступна для этого видео"
+            # Сначала пытаемся получить субтитры на выбранном языке
+            if selected_lang in all_subs and all_subs[selected_lang]:
+                # Берем первый доступный формат
+                for sub_format in all_subs[selected_lang]:
+                    if sub_format.get('url'):
+                        return _fetch_and_parse_subtitles(
+                            sub_format['url'], 
+                            sub_format.get('ext', 'json3')
+                        )
+            
+            # Если не нашли субтитры на выбранном языке
+            lang_names = {'en': 'английском', 'es': 'испанском', 'pt': 'португальском', 'ru': 'русском'}
+            lang_name = lang_names.get(selected_lang, selected_lang)
+            return f"Субтитры на {lang_name} языке недоступны для этого видео", f"Субтитры на {lang_name} языке недоступны для этого видео"
             
         except Exception as e:
             print(f"yt-dlp error: {str(e)}")
@@ -330,68 +340,46 @@ def get_video_transcript_api(video_id):
         # Создаем экземпляр API
         api = YouTubeTranscriptApi()
         
-        # Пробуем получить транскрипцию на разных языках
+        # Пробуем получить транскрипцию на выбранном языке
         transcript_data = None
         
-        # Список языков для попытки
-        languages_to_try = [
-            None,  # Сначала пробуем без указания языка (берет первую доступную)
-            ['en'],  # Английский
-            ['es'],  # Испанский  
-            ['ru'],  # Русский
-            ['fr'],  # Французский
-            ['de'],  # Немецкий
-            ['pt'],  # Португальский
-            ['it'],  # Итальянский
-            ['ja'],  # Японский
-            ['ko'],  # Корейский
-            ['zh'],  # Китайский
-        ]
+        # Получаем выбранный язык
+        selected_lang = st.session_state.get('subtitle_language', 'en')
         
-        # Пробуем получить транскрипцию для каждого языка
-        for lang in languages_to_try:
-            try:
-                if proxy_url:
-                    # При включенном прокси используем явную передачу прокси в библиотеку
-                    proxies = {"http": proxy_url, "https": proxy_url}
-                    if lang is None:
-                        transcript_data = YouTubeTranscriptApi.get_transcript(
-                            video_id,
-                            proxies=proxies
-                        )
-                    else:
-                        transcript_data = YouTubeTranscriptApi.get_transcript(
-                            video_id,
-                            languages=lang,
-                            proxies=proxies
-                        )
-                else:
-                    if lang is None:
-                        # Пробуем без указания языка - должно взять любую доступную
-                        transcript_data = api.fetch(video_id)
-                    else:
-                        # Пробуем с конкретным языком
-                        transcript_data = api.fetch(video_id, languages=lang)
-                
-                if transcript_data:
-                    break  # Если успешно получили, выходим из цикла
-            except:
-                continue  # Если не получилось, пробуем следующий язык
+        # Пробуем получить транскрипцию на выбранном языке
+        try:
+            if proxy_url:
+                # При включенном прокси используем явную передачу прокси в библиотеку
+                proxies = {"http": proxy_url, "https": proxy_url}
+                transcript_data = YouTubeTranscriptApi.get_transcript(
+                    video_id,
+                    languages=[selected_lang],
+                    proxies=proxies
+                )
+            else:
+                # Пробуем с конкретным языком
+                transcript_data = api.fetch(video_id, languages=[selected_lang])
+        except:
+            transcript_data = None
         
-        # Если ничего не получилось через api.fetch, пробуем альтернативный способ
+        # Если не получилось на выбранном языке, пробуем получить автоматические субтитры
         if not transcript_data:
             try:
-                # Получаем список всех доступных транскрипций и берем первую
-                from youtube_transcript_api._api import TranscriptListFetcher
-                fetcher = TranscriptListFetcher(video_id)
-                transcript_list = fetcher.fetch()
-                if transcript_list:
-                    # Берем первую доступную транскрипцию
-                    first_transcript = list(transcript_list.values())[0]
-                    if first_transcript:
-                        # Извлекаем язык из первой транскрипции
-                        lang_code = first_transcript.get('language', 'en')
-                        transcript_data = api.fetch(video_id, languages=[lang_code])
+                if proxy_url:
+                    proxies = {"http": proxy_url, "https": proxy_url}
+                    # Пробуем получить автоматические субтитры на выбранном языке
+                    transcript_list = YouTubeTranscriptApi.list_transcripts(video_id, proxies=proxies)
+                else:
+                    transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+                
+                # Ищем автоматические субтитры на выбранном языке
+                for transcript in transcript_list:
+                    if transcript.language_code == selected_lang:
+                        if proxy_url:
+                            transcript_data = transcript.fetch(proxies=proxies)
+                        else:
+                            transcript_data = transcript.fetch()
+                        break
             except:
                 pass
         
@@ -433,13 +421,18 @@ def get_video_transcript_api(video_id):
             
             return full_text, full_text_with_timestamps
         else:
-            return "Транскрипция недоступна для этого видео", "Транскрипция недоступна для этого видео"
+            # Если не нашли субтитры на выбранном языке
+            lang_names = {'en': 'английском', 'es': 'испанском', 'pt': 'португальском', 'ru': 'русском'}
+            lang_name = lang_names.get(selected_lang, selected_lang)
+            return f"Субтитры на {lang_name} языке недоступны для этого видео", f"Субтитры на {lang_name} языке недоступны для этого видео"
             
     except Exception as e:
         # Обработка различных типов ошибок
         error_str = str(e)
         if "no element found" in error_str.lower() or "xml" in error_str.lower():
-            return "Транскрипция недоступна для этого видео", "Транскрипция недоступна для этого видео"
+            lang_names = {'en': 'английском', 'es': 'испанском', 'pt': 'португальском', 'ru': 'русском'}
+            lang_name = lang_names.get(st.session_state.get('subtitle_language', 'en'), st.session_state.get('subtitle_language', 'en'))
+            return f"Субтитры на {lang_name} языке недоступны для этого видео", f"Субтитры на {lang_name} языке недоступны для этого видео"
         else:
             error_msg = f"Не удалось получить транскрипцию: {error_str[:200]}"
             return error_msg, error_msg
@@ -1126,6 +1119,23 @@ with st.sidebar:
         index=0 if st.session_state.get('transcript_method') == "YouTubeTranscriptApi" else 1,
         key="transcript_method_select",
         help="YouTubeTranscriptApi - стандартный метод, yt-dlp - альтернативный метод с более широкими возможностями"
+    )
+    
+    # Выбор языка субтитров
+    st.markdown("### Язык субтитров")
+    language_options = {
+        "en": "🇬🇧 Английский",
+        "es": "🇪🇸 Испанский", 
+        "pt": "🇵🇹 Португальский",
+        "ru": "🇷🇺 Русский"
+    }
+    st.session_state.subtitle_language = st.selectbox(
+        "Выберите язык субтитров:",
+        options=list(language_options.keys()),
+        format_func=lambda x: language_options[x],
+        index=list(language_options.keys()).index(st.session_state.get('subtitle_language', 'en')),
+        key="subtitle_language_select",
+        help="Выберите язык субтитров для получения транскрипции видео"
     )
     
     # Опция использования прокси для получения транскрипции
