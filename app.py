@@ -12,10 +12,10 @@ from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, No
 import anthropic
 
 # Параметры прокси для получения транскрипции
-PROXY_HOST = "45.147.102.53"
-PROXY_PORT = 8000
-PROXY_USERNAME = "hyLPM5"
-PROXY_PASSWORD = "A4W7C7"
+PROXY_HOST = "185.76.11.214"
+PROXY_PORT = 80
+PROXY_USERNAME = "krdxwmej-14"
+PROXY_PASSWORD = "r0ajol0cnax6"
 
 def _get_proxy_url():
     return f"http://{PROXY_USERNAME}:{PROXY_PASSWORD}@{PROXY_HOST}:{PROXY_PORT}"
