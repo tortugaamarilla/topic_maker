@@ -4,12 +4,19 @@ import os
 import io
 import base64
 import time
+import ssl
+import json
+from typing import Tuple, Optional
 from PIL import Image
 import requests
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 import anthropic
+import yt_dlp
+
+# Для лучшей совместимости с yt-dlp
+ssl._create_default_https_context = ssl._create_unverified_context
 
 # Параметры прокси для получения транскрипции
 PROXY_HOST = "185.76.11.214"
@@ -71,6 +78,8 @@ if 'temperature' not in st.session_state:
     st.session_state.temperature = 0.7
 if 'use_proxy' not in st.session_state:
     st.session_state.use_proxy = False
+if 'transcript_method' not in st.session_state:
+    st.session_state.transcript_method = "YouTubeTranscriptApi"
 
 # Функция для извлечения ID видео из URL YouTube
 def extract_video_id(url):
@@ -131,8 +140,175 @@ def get_video_title(video_id):
     
     return "Все API ключи исчерпали квоту"
 
-# Функция для получения транскрипции видео
-def get_video_transcript(video_id):
+# Функция для получения транскрипции видео через yt-dlp
+def get_video_transcript_ytdlp(video_id: str) -> Tuple[str, str]:
+    """
+    Получает транскрипцию видео через yt-dlp
+    Возвращает: (текст_без_временных_меток, текст_с_временными_метками)
+    """
+    
+    ydl_opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'extract_flat': False,
+        'skip_download': True,
+        # Критически важные опции для субтитров
+        'writesubtitles': False,  # Не сохраняем файлы
+        'writeautomaticsub': False,  # Не сохраняем файлы
+        'subtitlesformat': 'json3/srv1/srv2/srv3/ttml/vtt',
+        'subtitleslangs': ['en', 'ru', 'es', 'fr', 'de', 'pt', 'it', 'ja', 'ko', 'zh'],
+        # Дополнительные опции для надежности
+        'nocheckcertificate': True,
+        'geo_bypass': True,
+        'geo_bypass_country': 'US',
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'referer': 'https://www.youtube.com/',
+    }
+    
+    # Добавляем прокси если включено
+    if st.session_state.get('use_proxy', False):
+        ydl_opts['proxy'] = _get_proxy_url()
+    
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        try:
+            # Извлекаем информацию о видео БЕЗ скачивания
+            info = ydl.extract_info(
+                f'https://www.youtube.com/watch?v={video_id}', 
+                download=False
+            )
+            
+            # Приоритет: 1) обычные субтитры 2) автоматические
+            subtitles = info.get('subtitles', {})
+            automatic_captions = info.get('automatic_captions', {})
+            
+            # Объединяем оба источника
+            all_subs = {**automatic_captions, **subtitles}
+            
+            # Ищем доступные субтитры по приоритету языков
+            for lang in ['en', 'ru', 'es', 'fr', 'de', 'pt', 'it', 'ja', 'ko', 'zh']:
+                if lang in all_subs and all_subs[lang]:
+                    # Берем первый доступный формат
+                    for sub_format in all_subs[lang]:
+                        if sub_format.get('url'):
+                            return _fetch_and_parse_subtitles(
+                                sub_format['url'], 
+                                sub_format.get('ext', 'json3')
+                            )
+            
+            return "Транскрипция недоступна для этого видео", "Транскрипция недоступна для этого видео"
+            
+        except Exception as e:
+            print(f"yt-dlp error: {str(e)}")
+            return "Не удалось получить транскрипцию", "Не удалось получить транскрипцию"
+
+
+def _fetch_and_parse_subtitles(url: str, format_type: str) -> Tuple[str, str]:
+    """Загружает и парсит субтитры"""
+    try:
+        # Используем прокси если нужно
+        proxies = {}
+        if st.session_state.get('use_proxy', False):
+            proxy_url = _get_proxy_url()
+            proxies = {'http': proxy_url, 'https': proxy_url}
+        
+        response = requests.get(url, proxies=proxies, timeout=30)
+        response.raise_for_status()
+        
+        # Парсим в зависимости от формата
+        if 'json' in format_type:
+            return _parse_json_subtitles(response.text)
+        elif 'vtt' in format_type:
+            return _parse_vtt_subtitles(response.text)
+        else:
+            # Пытаемся как JSON
+            return _parse_json_subtitles(response.text)
+            
+    except Exception as e:
+        print(f"Subtitle fetch error: {str(e)}")
+        return "Ошибка загрузки субтитров", "Ошибка загрузки субтитров"
+
+
+def _parse_json_subtitles(content: str) -> Tuple[str, str]:
+    """Парсит JSON3 формат субтитров YouTube"""
+    try:
+        data = json.loads(content)
+        
+        full_text = []
+        text_with_timestamps = []
+        
+        for event in data.get('events', []):
+            if 'segs' not in event:
+                continue
+                
+            # Собираем текст из сегментов
+            text = ''.join([seg.get('utf8', '') for seg in event['segs'] if 'utf8' in seg])
+            text = text.strip()
+            
+            if text:
+                full_text.append(text)
+                
+                # Добавляем временную метку
+                start_ms = event.get('tStartMs', 0)
+                start_seconds = start_ms / 1000
+                time_str = _format_time(start_seconds)
+                text_with_timestamps.append(f"[{time_str}] {text}")
+        
+        return '\n'.join(full_text), '\n'.join(text_with_timestamps)
+        
+    except json.JSONDecodeError:
+        # Если не JSON, пробуем как plain text
+        lines = content.split('\n')
+        return '\n'.join(lines), '\n'.join(lines)
+
+
+def _parse_vtt_subtitles(content: str) -> Tuple[str, str]:
+    """Парсит VTT формат субтитров"""
+    lines = content.split('\n')
+    
+    full_text = []
+    text_with_timestamps = []
+    
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        
+        # Ищем временные метки (00:00:00.000 --> 00:00:00.000)
+        if '-->' in line:
+            time_match = re.match(r'(\d{2}:\d{2}:\d{2})', line)
+            if time_match:
+                timestamp = time_match.group(1)
+                
+                # Следующие строки - текст
+                i += 1
+                text_lines = []
+                while i < len(lines) and lines[i].strip() and '-->' not in lines[i]:
+                    text_lines.append(lines[i].strip())
+                    i += 1
+                
+                if text_lines:
+                    text = ' '.join(text_lines)
+                    full_text.append(text)
+                    text_with_timestamps.append(f"[{timestamp}] {text}")
+                continue
+        i += 1
+    
+    return '\n'.join(full_text), '\n'.join(text_with_timestamps)
+
+
+def _format_time(seconds: float) -> str:
+    """Форматирует время в MM:SS или HH:MM:SS"""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    
+    if hours > 0:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    else:
+        return f"{minutes:02d}:{secs:02d}"
+
+
+# Функция для получения транскрипции видео (оригинальная через YouTubeTranscriptApi)
+def get_video_transcript_api(video_id):
     # Включение прокси при необходимости (только на время запроса)
     proxy_url = None
     # Сохраняем текущее окружение прокси (верхний и нижний регистры)
@@ -296,6 +472,15 @@ def get_video_transcript(video_id):
                 os.environ.pop('all_proxy', None)
             else:
                 os.environ['all_proxy'] = old_all_proxy_l
+
+
+# Основная функция для получения транскрипции (выбирает метод)
+def get_video_transcript(video_id):
+    """Получает транскрипцию видео используя выбранный метод"""
+    if st.session_state.get('transcript_method') == 'yt-dlp':
+        return get_video_transcript_ytdlp(video_id)
+    else:
+        return get_video_transcript_api(video_id)
 
 # Функция для получения текста с превью через Claude API
 def get_thumbnail_text(video_id):
@@ -931,6 +1116,16 @@ with st.sidebar:
         available_models,
         index=4,  # По умолчанию Claude Sonnet 3.7
         key="preview_model_select"
+    )
+    
+    # Выбор метода получения транскрипции
+    st.markdown("### Метод получения транскрипции")
+    st.session_state.transcript_method = st.selectbox(
+        "Выберите метод:",
+        ["YouTubeTranscriptApi", "yt-dlp"],
+        index=0 if st.session_state.get('transcript_method') == "YouTubeTranscriptApi" else 1,
+        key="transcript_method_select",
+        help="YouTubeTranscriptApi - стандартный метод, yt-dlp - альтернативный метод с более широкими возможностями"
     )
     
     # Опция использования прокси для получения транскрипции
