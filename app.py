@@ -47,9 +47,9 @@ if 'transcript' not in st.session_state:
 if 'transcript_with_timestamps' not in st.session_state:
     st.session_state.transcript_with_timestamps = ""
 if 'selected_model' not in st.session_state:
-    st.session_state.selected_model = "Claude Sonnet 3.7"
+    st.session_state.selected_model = "Claude Sonnet 4.5"
 if 'selected_model_preview' not in st.session_state:
-    st.session_state.selected_model_preview = "Claude Sonnet 3.7"
+    st.session_state.selected_model_preview = "Claude Sonnet 4.5"
 if 'show_timestamps' not in st.session_state:
     st.session_state.show_timestamps = False
 if 'synopsis_orig' not in st.session_state:
@@ -1077,7 +1077,7 @@ with st.sidebar:
     st.session_state.selected_model =     st.selectbox(
         "Для синопсисов, аннотаций и сценариев:",
         available_models,
-        index=4,  # По умолчанию Claude Sonnet 3.7
+        index=2,  # По умолчанию Claude Sonnet 4.5
         key="main_model_select"
     )
     
@@ -1107,7 +1107,7 @@ with st.sidebar:
     st.session_state.selected_model_preview = st.selectbox(
         "Для анализа изображений превью:",
         available_models,
-        index=4,  # По умолчанию Claude Sonnet 3.7
+        index=2,  # По умолчанию Claude Sonnet 4.5
         key="preview_model_select"
     )
     
