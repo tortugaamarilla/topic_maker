@@ -82,6 +82,22 @@ if 'transcript_method' not in st.session_state:
     st.session_state.transcript_method = "yt-dlp"
 if 'subtitle_language' not in st.session_state:
     st.session_state.subtitle_language = "en"  # По умолчанию английский
+# Поля для хранения саммари
+if 'summary' not in st.session_state:
+    st.session_state.summary = ""
+if 'api_history_summary' not in st.session_state:
+    st.session_state.api_history_summary = {}
+# Поля для хранения комментариев
+if 'comment_on_video' not in st.session_state:
+    st.session_state.comment_on_video = ""
+if 'api_history_comment_on_video' not in st.session_state:
+    st.session_state.api_history_comment_on_video = {}
+if 'user_comment' not in st.session_state:
+    st.session_state.user_comment = ""
+if 'reply_to_comment' not in st.session_state:
+    st.session_state.reply_to_comment = ""
+if 'api_history_reply_to_comment' not in st.session_state:
+    st.session_state.api_history_reply_to_comment = {}
 
 # Функция для извлечения ID видео из URL YouTube
 def extract_video_id(url):
@@ -1060,6 +1076,340 @@ def create_scenario():
     except Exception as e:
         return None, f"Ошибка при создании сценария: {str(e)}"
 
+# Функция для создания саммари
+def create_summary():
+    """Создает саммари на основе транскрипции видео"""
+    try:
+        # Проверяем наличие транскрипции
+        transcript = st.session_state.get('transcript', '')
+        if not transcript:
+            return None, "Нет транскрипции для создания саммари"
+        
+        # Загружаем промпт
+        try:
+            with open("prompt_summary.txt", "r", encoding="utf-8") as file:
+                prompt_text = file.read()
+        except FileNotFoundError:
+            return None, "Не найден файл prompt_summary.txt"
+        
+        # Проверяем наличие API ключа
+        if "ANTHROPIC_API_KEY" not in st.secrets:
+            return None, "API ключ Anthropic не найден в секретах"
+        
+        # Инициализируем клиент Claude
+        api_key = str(st.secrets["ANTHROPIC_API_KEY"])
+        client = anthropic.Anthropic(api_key=api_key)
+        
+        # Попытки отправки запроса с обработкой rate limit
+        max_retries = 5
+        base_delay = 10
+        
+        for attempt in range(max_retries):
+            try:
+                # Используем экспоненциальную задержку между попытками
+                if attempt > 0:
+                    wait_time = base_delay * (2 ** (attempt - 1))
+                    st.info(f"⏳ Попытка {attempt + 1}/{max_retries}. Ожидание {wait_time} секунд...")
+                    time.sleep(wait_time)
+                
+                # Отправляем запрос к Claude с streaming
+                stream = client.messages.create(
+                    model=get_claude_model(),
+                    max_tokens=get_max_tokens(),
+                    temperature=st.session_state.get('temperature', 0.7),
+                    system=prompt_text,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": transcript
+                        }
+                    ],
+                    stream=True
+                )
+                
+                # Собираем результат из streaming response
+                result = ""
+                for event in stream:
+                    if event.type == "content_block_delta":
+                        result += event.delta.text
+                    elif event.type == "message_stop":
+                        break
+                print(f"DEBUG: Получено саммари длиной {len(result)} символов")
+                
+                # Сохраняем историю запроса для саммари
+                st.session_state.api_history_summary = {
+                    'request': {
+                        'model': get_claude_model(),
+                        'max_tokens': get_max_tokens(),
+                        'temperature': st.session_state.get('temperature', 0.7),
+                        'system_prompt': prompt_text[:500] + "..." if len(prompt_text) > 500 else prompt_text,
+                        'user_message': transcript[:500] + "..." if len(transcript) > 500 else transcript,
+                        'full_system_prompt': prompt_text,
+                        'full_user_message': transcript
+                    },
+                    'response': result
+                }
+                
+                return result, None
+                
+            except anthropic.RateLimitError as e:
+                error_details = str(e)
+                if "input tokens" in error_details.lower():
+                    if attempt < max_retries - 1:
+                        st.warning(f"⚠️ Превышен лимит входных токенов. Попытка {attempt + 2}/{max_retries} через некоторое время...")
+                        continue
+                    else:
+                        return None, "Текст слишком большой. Попробуйте использовать видео с меньшей транскрипцией или подождите несколько минут."
+                else:
+                    if attempt < max_retries - 1:
+                        continue
+                    else:
+                        return None, "Превышен лимит запросов API. Пожалуйста, подождите 5-10 минут и попробуйте снова."
+                        
+            except Exception as e:
+                error_str = str(e)
+                if "rate_limit" in error_str.lower() or "429" in error_str:
+                    if attempt < max_retries - 1:
+                        continue
+                    else:
+                        return None, "Превышен лимит запросов. Подождите 5-10 минут перед следующей попыткой."
+                elif "timeout" in error_str.lower():
+                    if attempt < max_retries - 1:
+                        st.warning("⏱️ Таймаут запроса. Повторная попытка...")
+                        continue
+                    else:
+                        return None, "Превышено время ожидания ответа. Попробуйте еще раз."
+                else:
+                    return None, f"Ошибка: {error_str[:200]}"
+                    
+    except Exception as e:
+        return None, f"Ошибка при создании саммари: {str(e)}"
+
+# Функция для создания комментария по транскрипции
+def create_comment_on_video():
+    """Создает комментарий на основе транскрипции видео"""
+    try:
+        # Проверяем наличие транскрипции
+        transcript = st.session_state.get('transcript', '')
+        if not transcript:
+            return None, "Нет транскрипции для создания комментария"
+        
+        # Загружаем промпт
+        try:
+            with open("prompt_comment_on_video.txt", "r", encoding="utf-8") as file:
+                prompt_text = file.read()
+        except FileNotFoundError:
+            return None, "Не найден файл prompt_comment_on_video.txt"
+        
+        # Проверяем наличие API ключа
+        if "ANTHROPIC_API_KEY" not in st.secrets:
+            return None, "API ключ Anthropic не найден в секретах"
+        
+        # Инициализируем клиент Claude
+        api_key = str(st.secrets["ANTHROPIC_API_KEY"])
+        client = anthropic.Anthropic(api_key=api_key)
+        
+        # Попытки отправки запроса с обработкой rate limit
+        max_retries = 5
+        base_delay = 10
+        
+        for attempt in range(max_retries):
+            try:
+                # Используем экспоненциальную задержку между попытками
+                if attempt > 0:
+                    wait_time = base_delay * (2 ** (attempt - 1))
+                    st.info(f"⏳ Попытка {attempt + 1}/{max_retries}. Ожидание {wait_time} секунд...")
+                    time.sleep(wait_time)
+                
+                # Отправляем запрос к Claude с streaming
+                stream = client.messages.create(
+                    model=get_claude_model(),
+                    max_tokens=get_max_tokens(),
+                    temperature=st.session_state.get('temperature', 0.7),
+                    system=prompt_text,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": transcript
+                        }
+                    ],
+                    stream=True
+                )
+                
+                # Собираем результат из streaming response
+                result = ""
+                for event in stream:
+                    if event.type == "content_block_delta":
+                        result += event.delta.text
+                    elif event.type == "message_stop":
+                        break
+                print(f"DEBUG: Получен комментарий длиной {len(result)} символов")
+                
+                # Сохраняем историю запроса для комментария
+                st.session_state.api_history_comment_on_video = {
+                    'request': {
+                        'model': get_claude_model(),
+                        'max_tokens': get_max_tokens(),
+                        'temperature': st.session_state.get('temperature', 0.7),
+                        'system_prompt': prompt_text[:500] + "..." if len(prompt_text) > 500 else prompt_text,
+                        'user_message': transcript[:500] + "..." if len(transcript) > 500 else transcript,
+                        'full_system_prompt': prompt_text,
+                        'full_user_message': transcript
+                    },
+                    'response': result
+                }
+                
+                return result, None
+                
+            except anthropic.RateLimitError as e:
+                error_details = str(e)
+                if "input tokens" in error_details.lower():
+                    if attempt < max_retries - 1:
+                        st.warning(f"⚠️ Превышен лимит входных токенов. Попытка {attempt + 2}/{max_retries} через некоторое время...")
+                        continue
+                    else:
+                        return None, "Текст слишком большой. Попробуйте использовать видео с меньшей транскрипцией или подождите несколько минут."
+                else:
+                    if attempt < max_retries - 1:
+                        continue
+                    else:
+                        return None, "Превышен лимит запросов API. Пожалуйста, подождите 5-10 минут и попробуйте снова."
+                        
+            except Exception as e:
+                error_str = str(e)
+                if "rate_limit" in error_str.lower() or "429" in error_str:
+                    if attempt < max_retries - 1:
+                        continue
+                    else:
+                        return None, "Превышен лимит запросов. Подождите 5-10 минут перед следующей попыткой."
+                elif "timeout" in error_str.lower():
+                    if attempt < max_retries - 1:
+                        st.warning("⏱️ Таймаут запроса. Повторная попытка...")
+                        continue
+                    else:
+                        return None, "Превышено время ожидания ответа. Попробуйте еще раз."
+                else:
+                    return None, f"Ошибка: {error_str[:200]}"
+                    
+    except Exception as e:
+        return None, f"Ошибка при создании комментария: {str(e)}"
+
+# Функция для создания ответа на комментарий пользователя
+def create_reply_to_comment(user_comment):
+    """Создает ответ на комментарий пользователя на основе транскрипции видео"""
+    try:
+        # Проверяем наличие транскрипции
+        transcript = st.session_state.get('transcript', '')
+        if not transcript:
+            return None, "Нет транскрипции для создания ответа"
+        
+        # Проверяем наличие комментария пользователя
+        if not user_comment:
+            return None, "Нет комментария пользователя для ответа"
+        
+        # Загружаем промпт
+        try:
+            with open("prompt_reply_to_users_comment.txt", "r", encoding="utf-8") as file:
+                prompt_text = file.read()
+        except FileNotFoundError:
+            return None, "Не найден файл prompt_reply_to_users_comment.txt"
+        
+        # Проверяем наличие API ключа
+        if "ANTHROPIC_API_KEY" not in st.secrets:
+            return None, "API ключ Anthropic не найден в секретах"
+        
+        # Инициализируем клиент Claude
+        api_key = str(st.secrets["ANTHROPIC_API_KEY"])
+        client = anthropic.Anthropic(api_key=api_key)
+        
+        # Объединяем транскрипцию и комментарий пользователя
+        combined_message = f"Транскрипция видео:\n{transcript}\n\nКомментарий пользователя:\n{user_comment}"
+        
+        # Попытки отправки запроса с обработкой rate limit
+        max_retries = 5
+        base_delay = 10
+        
+        for attempt in range(max_retries):
+            try:
+                # Используем экспоненциальную задержку между попытками
+                if attempt > 0:
+                    wait_time = base_delay * (2 ** (attempt - 1))
+                    st.info(f"⏳ Попытка {attempt + 1}/{max_retries}. Ожидание {wait_time} секунд...")
+                    time.sleep(wait_time)
+                
+                # Отправляем запрос к Claude с streaming
+                stream = client.messages.create(
+                    model=get_claude_model(),
+                    max_tokens=get_max_tokens(),
+                    temperature=st.session_state.get('temperature', 0.7),
+                    system=prompt_text,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": combined_message
+                        }
+                    ],
+                    stream=True
+                )
+                
+                # Собираем результат из streaming response
+                result = ""
+                for event in stream:
+                    if event.type == "content_block_delta":
+                        result += event.delta.text
+                    elif event.type == "message_stop":
+                        break
+                print(f"DEBUG: Получен ответ на комментарий длиной {len(result)} символов")
+                
+                # Сохраняем историю запроса для ответа на комментарий
+                st.session_state.api_history_reply_to_comment = {
+                    'request': {
+                        'model': get_claude_model(),
+                        'max_tokens': get_max_tokens(),
+                        'temperature': st.session_state.get('temperature', 0.7),
+                        'system_prompt': prompt_text[:500] + "..." if len(prompt_text) > 500 else prompt_text,
+                        'user_message': combined_message[:500] + "..." if len(combined_message) > 500 else combined_message,
+                        'full_system_prompt': prompt_text,
+                        'full_user_message': combined_message
+                    },
+                    'response': result
+                }
+                
+                return result, None
+                
+            except anthropic.RateLimitError as e:
+                error_details = str(e)
+                if "input tokens" in error_details.lower():
+                    if attempt < max_retries - 1:
+                        st.warning(f"⚠️ Превышен лимит входных токенов. Попытка {attempt + 2}/{max_retries} через некоторое время...")
+                        continue
+                    else:
+                        return None, "Текст слишком большой. Попробуйте использовать видео с меньшей транскрипцией или подождите несколько минут."
+                else:
+                    if attempt < max_retries - 1:
+                        continue
+                    else:
+                        return None, "Превышен лимит запросов API. Пожалуйста, подождите 5-10 минут и попробуйте снова."
+                        
+            except Exception as e:
+                error_str = str(e)
+                if "rate_limit" in error_str.lower() or "429" in error_str:
+                    if attempt < max_retries - 1:
+                        continue
+                    else:
+                        return None, "Превышен лимит запросов. Подождите 5-10 минут перед следующей попыткой."
+                elif "timeout" in error_str.lower():
+                    if attempt < max_retries - 1:
+                        st.warning("⏱️ Таймаут запроса. Повторная попытка...")
+                        continue
+                    else:
+                        return None, "Превышено время ожидания ответа. Попробуйте еще раз."
+                else:
+                    return None, f"Ошибка: {error_str[:200]}"
+                    
+    except Exception as e:
+        return None, f"Ошибка при создании ответа на комментарий: {str(e)}"
+
 # Проверяем, нужна ли перезагрузка страницы
 if st.session_state.get('need_rerun', False):
     st.session_state.need_rerun = False
@@ -1686,6 +2036,295 @@ if create_scenario_clicked:
                 st.session_state.scenario = scenario
                 st.success(f"✅ Сценарий создан ({len(scenario)} символов)")
                 st.rerun()
+
+# Секция саммари
+st.markdown("---")
+st.markdown("### Саммари")
+
+# Создать саммари транскрипции - заголовок и кнопка в одной строке
+col_header, col_btn = st.columns([4, 1])
+with col_header:
+    st.markdown("**Создать саммари транскрипции**")
+with col_btn:
+    create_summary_clicked = st.button("Создать", key="create_summary")
+
+# Поле для отображения саммари (показываем всегда, если есть данные)
+if st.session_state.get('summary', ''):
+    st.text_area(
+        "Саммари",
+        value=st.session_state.summary,
+        height=300,
+        key="summary_display",
+        label_visibility="collapsed"
+    )
+    
+    # Свёрнутый блок с информацией о запросе к API
+    if st.session_state.get('api_history_summary'):
+        with st.expander("🔍 Детали запроса к LLM", expanded=False):
+            api_data = st.session_state.api_history_summary
+            st.markdown("**Параметры запроса:**")
+            st.code(f"""
+Модель: {api_data['request']['model']}
+Макс. токенов: {api_data['request']['max_tokens']}
+Температура: {api_data['request']['temperature']}
+""")
+            st.markdown("**Системный промпт (начало):**")
+            st.text(api_data['request']['system_prompt'])
+            st.markdown("**Сообщение пользователя (начало):**")
+            st.text(api_data['request']['user_message'])
+            
+            # Полные версии в отдельных вкладках
+            tab1, tab2, tab3 = st.tabs(["Полный системный промпт", "Полное сообщение", "Ответ LLM"])
+            with tab1:
+                st.text_area("Системный промпт", value=api_data['request']['full_system_prompt'], height=300, key="full_system_prompt_summary", label_visibility="collapsed")
+            with tab2:
+                st.text_area("Сообщение пользователя", value=api_data['request']['full_user_message'], height=300, key="full_user_message_summary", label_visibility="collapsed")
+            with tab3:
+                st.text_area("Ответ модели", value=api_data['response'], height=300, key="full_response_summary", label_visibility="collapsed")
+
+# Обработка нажатия кнопки создания саммари
+if create_summary_clicked:
+    # Проверяем наличие транскрипции
+    if not st.session_state.get('transcript', ''):
+        # Если нет транскрипции, проверяем video_id
+        if not st.session_state.video_id:
+            st.warning("⚠️ Данные о видео не найдены. Пожалуйста, сначала введите ссылку на видео и нажмите 'Получить данные референса'")
+        else:
+            # Есть video_id, но нет транскрипции - получаем все данные
+            with st.spinner("📝 Получение данных о видео..."):
+                # Получаем заголовок
+                title = get_video_title(st.session_state.video_id)
+                st.session_state.video_title = title if title else ""
+                
+                # Получаем текст с превью
+                thumbnail_text = get_thumbnail_text(st.session_state.video_id)
+                st.session_state.thumbnail_text = thumbnail_text if thumbnail_text else ""
+                
+                # Получаем транскрипцию
+                transcript, transcript_with_timestamps = get_video_transcript(st.session_state.video_id)
+                st.session_state.transcript = transcript if transcript else ""
+                st.session_state.transcript_with_timestamps = transcript_with_timestamps if transcript_with_timestamps else ""
+                
+                if not st.session_state.transcript:
+                    st.error("❌ Не удалось получить транскрипцию видео")
+                else:
+                    st.success("✅ Данные о видео получены")
+                    
+                    # Теперь создаем саммари
+                    with st.spinner("🤖 Создаю саммари..."):
+                        summary, error = create_summary()
+                        if error:
+                            st.error(f"❌ {error}")
+                        else:
+                            st.session_state.summary = summary
+                            st.success(f"✅ Саммари создано ({len(summary)} символов)")
+                            st.rerun()
+    else:
+        # Есть транскрипция - создаем саммари
+        with st.spinner("🤖 Создаю саммари..."):
+            summary, error = create_summary()
+            if error:
+                st.error(f"❌ {error}")
+            else:
+                st.session_state.summary = summary
+                st.success(f"✅ Саммари создано ({len(summary)} символов)")
+                st.rerun()
+
+# Секция комментариев
+st.markdown("---")
+st.markdown("### Комментарии")
+
+# Комментарий по транскрипции - заголовок и кнопка в одной строке
+col_header, col_btn = st.columns([4, 1])
+with col_header:
+    st.markdown("**Комментарий по транскрипции**")
+with col_btn:
+    create_comment_on_video_clicked = st.button("Создать", key="create_comment_on_video")
+
+# Поле для отображения комментария (показываем всегда, если есть данные)
+if st.session_state.get('comment_on_video', ''):
+    st.text_area(
+        "Комментарий по видео",
+        value=st.session_state.comment_on_video,
+        height=200,
+        key="comment_on_video_display",
+        label_visibility="collapsed"
+    )
+    
+    # Свёрнутый блок с информацией о запросе к API
+    if st.session_state.get('api_history_comment_on_video'):
+        with st.expander("🔍 Детали запроса к LLM", expanded=False):
+            api_data = st.session_state.api_history_comment_on_video
+            st.markdown("**Параметры запроса:**")
+            st.code(f"""
+Модель: {api_data['request']['model']}
+Макс. токенов: {api_data['request']['max_tokens']}
+Температура: {api_data['request']['temperature']}
+""")
+            st.markdown("**Системный промпт (начало):**")
+            st.text(api_data['request']['system_prompt'])
+            st.markdown("**Сообщение пользователя (начало):**")
+            st.text(api_data['request']['user_message'])
+            
+            # Полные версии в отдельных вкладках
+            tab1, tab2, tab3 = st.tabs(["Полный системный промпт", "Полное сообщение", "Ответ LLM"])
+            with tab1:
+                st.text_area("Системный промпт", value=api_data['request']['full_system_prompt'], height=300, key="full_system_prompt_comment", label_visibility="collapsed")
+            with tab2:
+                st.text_area("Сообщение пользователя", value=api_data['request']['full_user_message'], height=300, key="full_user_message_comment", label_visibility="collapsed")
+            with tab3:
+                st.text_area("Ответ модели", value=api_data['response'], height=300, key="full_response_comment", label_visibility="collapsed")
+
+# Обработка нажатия кнопки создания комментария по транскрипции
+if create_comment_on_video_clicked:
+    # Проверяем наличие транскрипции
+    if not st.session_state.get('transcript', ''):
+        # Если нет транскрипции, проверяем video_id
+        if not st.session_state.video_id:
+            st.warning("⚠️ Данные о видео не найдены. Пожалуйста, сначала введите ссылку на видео и нажмите 'Получить данные референса'")
+        else:
+            # Есть video_id, но нет транскрипции - получаем все данные
+            with st.spinner("📝 Получение данных о видео..."):
+                # Получаем заголовок
+                title = get_video_title(st.session_state.video_id)
+                st.session_state.video_title = title if title else ""
+                
+                # Получаем текст с превью
+                thumbnail_text = get_thumbnail_text(st.session_state.video_id)
+                st.session_state.thumbnail_text = thumbnail_text if thumbnail_text else ""
+                
+                # Получаем транскрипцию
+                transcript, transcript_with_timestamps = get_video_transcript(st.session_state.video_id)
+                st.session_state.transcript = transcript if transcript else ""
+                st.session_state.transcript_with_timestamps = transcript_with_timestamps if transcript_with_timestamps else ""
+                
+                if not st.session_state.transcript:
+                    st.error("❌ Не удалось получить транскрипцию видео")
+                else:
+                    st.success("✅ Данные о видео получены")
+                    
+                    # Теперь создаем комментарий
+                    with st.spinner("🤖 Создаю комментарий..."):
+                        comment, error = create_comment_on_video()
+                        if error:
+                            st.error(f"❌ {error}")
+                        else:
+                            st.session_state.comment_on_video = comment
+                            st.success(f"✅ Комментарий создан ({len(comment)} символов)")
+                            st.rerun()
+    else:
+        # Есть транскрипция - создаем комментарий
+        with st.spinner("🤖 Создаю комментарий..."):
+            comment, error = create_comment_on_video()
+            if error:
+                st.error(f"❌ {error}")
+            else:
+                st.session_state.comment_on_video = comment
+                st.success(f"✅ Комментарий создан ({len(comment)} символов)")
+                st.rerun()
+
+# Ответить на комментарий пользователя
+st.markdown("**Ответить на комментарий пользователя**")
+
+# Поле для ввода комментария пользователя
+user_comment = st.text_area(
+    "Комментарий пользователя",
+    value=st.session_state.get('user_comment', ''),
+    height=100,
+    placeholder="Введите комментарий пользователя, на который нужно ответить",
+    key="user_comment_input"
+)
+# Сохраняем значение в session_state
+st.session_state.user_comment = user_comment
+
+# Кнопка создания ответа
+create_reply_clicked = st.button("Создать", key="create_reply_to_comment")
+
+# Поле для отображения ответа (показываем всегда, если есть данные)
+if st.session_state.get('reply_to_comment', ''):
+    st.text_area(
+        "Ответ на комментарий",
+        value=st.session_state.reply_to_comment,
+        height=200,
+        key="reply_to_comment_display",
+        label_visibility="collapsed"
+    )
+    
+    # Свёрнутый блок с информацией о запросе к API
+    if st.session_state.get('api_history_reply_to_comment'):
+        with st.expander("🔍 Детали запроса к LLM", expanded=False):
+            api_data = st.session_state.api_history_reply_to_comment
+            st.markdown("**Параметры запроса:**")
+            st.code(f"""
+Модель: {api_data['request']['model']}
+Макс. токенов: {api_data['request']['max_tokens']}
+Температура: {api_data['request']['temperature']}
+""")
+            st.markdown("**Системный промпт (начало):**")
+            st.text(api_data['request']['system_prompt'])
+            st.markdown("**Сообщение пользователя (начало):**")
+            st.text(api_data['request']['user_message'])
+            
+            # Полные версии в отдельных вкладках
+            tab1, tab2, tab3 = st.tabs(["Полный системный промпт", "Полное сообщение", "Ответ LLM"])
+            with tab1:
+                st.text_area("Системный промпт", value=api_data['request']['full_system_prompt'], height=300, key="full_system_prompt_reply", label_visibility="collapsed")
+            with tab2:
+                st.text_area("Сообщение пользователя", value=api_data['request']['full_user_message'], height=300, key="full_user_message_reply", label_visibility="collapsed")
+            with tab3:
+                st.text_area("Ответ модели", value=api_data['response'], height=300, key="full_response_reply", label_visibility="collapsed")
+
+# Обработка нажатия кнопки создания ответа на комментарий
+if create_reply_clicked:
+    # Проверяем наличие комментария пользователя
+    if not user_comment:
+        st.warning("⚠️ Пожалуйста, введите комментарий пользователя")
+    else:
+        # Проверяем наличие транскрипции
+        if not st.session_state.get('transcript', ''):
+            # Если нет транскрипции, проверяем video_id
+            if not st.session_state.video_id:
+                st.warning("⚠️ Данные о видео не найдены. Пожалуйста, сначала введите ссылку на видео и нажмите 'Получить данные референса'")
+            else:
+                # Есть video_id, но нет транскрипции - получаем все данные
+                with st.spinner("📝 Получение данных о видео..."):
+                    # Получаем заголовок
+                    title = get_video_title(st.session_state.video_id)
+                    st.session_state.video_title = title if title else ""
+                    
+                    # Получаем текст с превью
+                    thumbnail_text = get_thumbnail_text(st.session_state.video_id)
+                    st.session_state.thumbnail_text = thumbnail_text if thumbnail_text else ""
+                    
+                    # Получаем транскрипцию
+                    transcript, transcript_with_timestamps = get_video_transcript(st.session_state.video_id)
+                    st.session_state.transcript = transcript if transcript else ""
+                    st.session_state.transcript_with_timestamps = transcript_with_timestamps if transcript_with_timestamps else ""
+                    
+                    if not st.session_state.transcript:
+                        st.error("❌ Не удалось получить транскрипцию видео")
+                    else:
+                        st.success("✅ Данные о видео получены")
+                        
+                        # Теперь создаем ответ на комментарий
+                        with st.spinner("🤖 Создаю ответ на комментарий..."):
+                            reply, error = create_reply_to_comment(user_comment)
+                            if error:
+                                st.error(f"❌ {error}")
+                            else:
+                                st.session_state.reply_to_comment = reply
+                                st.success(f"✅ Ответ создан ({len(reply)} символов)")
+                                st.rerun()
+        else:
+            # Есть транскрипция - создаем ответ
+            with st.spinner("🤖 Создаю ответ на комментарий..."):
+                reply, error = create_reply_to_comment(user_comment)
+                if error:
+                    st.error(f"❌ {error}")
+                else:
+                    st.session_state.reply_to_comment = reply
+                    st.success(f"✅ Ответ создан ({len(reply)} символов)")
+                    st.rerun()
 
 # Footer с информацией
 st.markdown("---")
