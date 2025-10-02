@@ -19,7 +19,7 @@ import yt_dlp
 ssl._create_default_https_context = ssl._create_unverified_context
 
 # Параметры прокси для получения транскрипции
-PROXY_HOST = "p.webshare.io"
+PROXY_HOST = "185.76.11.214"
 PROXY_PORT = 80
 PROXY_USERNAME = "krdxwmej-18"
 PROXY_PASSWORD = "r0ajol0cnax6"
