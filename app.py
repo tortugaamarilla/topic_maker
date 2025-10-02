@@ -19,10 +19,10 @@ import yt_dlp
 ssl._create_default_https_context = ssl._create_unverified_context
 
 # Параметры прокси для получения транскрипции
-PROXY_HOST = "185.76.11.214"
-PROXY_PORT = 80
-PROXY_USERNAME = "krdxwmej-14"
-PROXY_PASSWORD = "r0ajol0cnax6"
+PROXY_HOST = "45.147.102.53"
+PROXY_PORT = 8000
+PROXY_USERNAME = "hyLPM5"
+PROXY_PASSWORD = "A4W7C7"
 
 def _get_proxy_url():
     return f"http://{PROXY_USERNAME}:{PROXY_PASSWORD}@{PROXY_HOST}:{PROXY_PORT}"
@@ -77,9 +77,9 @@ if 'scenario' not in st.session_state:
 if 'temperature' not in st.session_state:
     st.session_state.temperature = 0.7
 if 'use_proxy' not in st.session_state:
-    st.session_state.use_proxy = False
+    st.session_state.use_proxy = True
 if 'transcript_method' not in st.session_state:
-    st.session_state.transcript_method = "YouTubeTranscriptApi"
+    st.session_state.transcript_method = "yt-dlp"
 
 # Функция для извлечения ID видео из URL YouTube
 def extract_video_id(url):
