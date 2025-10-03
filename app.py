@@ -600,6 +600,17 @@ def get_max_tokens():
     else:  # Claude Sonnet 3.7
         return 64000  # 64K токенов
 
+# Функция для получения максимального количества токенов для модели превью
+def get_max_tokens_preview():
+    """Возвращает максимальное количество токенов для выбранной модели превью"""
+    # Обновленные лимиты для новых моделей
+    if st.session_state.selected_model_preview in ["Claude Opus 4.1", "Claude Opus 4"]:
+        return 32000  # 32K токенов
+    elif st.session_state.selected_model_preview in ["Claude Sonnet 4.5", "Claude Sonnet 4"]:
+        return 64000  # 64K токенов
+    else:  # Claude Sonnet 3.7
+        return 64000  # 64K токенов
+
 # Функция для получения информации о модели
 def get_model_info():
     """Возвращает информацию о максимальных размерах окон и стоимости для выбранной модели"""
@@ -854,6 +865,116 @@ def create_synopsis_red(synopsis_orig):
                     
     except Exception as e:
         return None, f"Ошибка при создании измененного синопсиса: {str(e)}"
+
+# Функция для создания вариантов текста превью
+def create_thumbnail_variants(thumbnail_text, synopsis_red):
+    """Создает варианты текста превью на основе текста с превью и измененного синопсиса"""
+    try:
+        # Проверяем наличие необходимых данных
+        if not thumbnail_text:
+            return None, "Нет текста с превью для генерации вариантов"
+        if not synopsis_red:
+            return None, "Нет измененного синопсиса для генерации вариантов"
+        
+        # Загружаем промпт
+        try:
+            with open("prompt_generate_thumbnail_texts.txt", "r", encoding="utf-8") as file:
+                prompt_text = file.read()
+        except FileNotFoundError:
+            return None, "Не найден файл prompt_generate_thumbnail_texts.txt"
+        
+        # Проверяем наличие API ключа
+        if "ANTHROPIC_API_KEY" not in st.secrets:
+            return None, "API ключ Anthropic не найден в секретах"
+        
+        # Инициализируем клиент Claude
+        api_key = str(st.secrets["ANTHROPIC_API_KEY"])
+        client = anthropic.Anthropic(api_key=api_key)
+        
+        # Попытки отправки запроса с обработкой rate limit
+        max_retries = 5
+        base_delay = 10
+        
+        for attempt in range(max_retries):
+            try:
+                # Используем экспоненциальную задержку между попытками
+                if attempt > 0:
+                    wait_time = base_delay * (2 ** (attempt - 1))
+                    st.info(f"⏳ Попытка {attempt + 1}/{max_retries}. Ожидание {wait_time} секунд...")
+                    time.sleep(wait_time)
+                
+                # Формируем сообщение для модели
+                user_message = f"Превью референса:\n{thumbnail_text}\n\nСинопсис:\n{synopsis_red}"
+                
+                # Отправляем запрос к Claude с streaming
+                stream = client.messages.create(
+                    model=get_claude_model_preview(),  # Используем модель для превью
+                    max_tokens=get_max_tokens_preview(),  # Используем правильный лимит для модели
+                    temperature=st.session_state.get('temperature_preview', 0.7),
+                    system=prompt_text,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": user_message
+                        }
+                    ],
+                    stream=True  # Используем streaming для больших запросов
+                )
+                
+                # Собираем результат из streaming response
+                result = ""
+                for chunk in stream:
+                    if chunk.type == "content_block_delta":
+                        result += chunk.delta.text
+                
+                # Сохраняем информацию о запросе в session_state
+                st.session_state.api_history_thumbnail_variants = {
+                    'request': {
+                        'model': get_claude_model_preview(),
+                        'max_tokens': get_max_tokens_preview(),
+                        'temperature': st.session_state.get('temperature_preview', 0.7),
+                        'system_prompt': prompt_text[:500] + "..." if len(prompt_text) > 500 else prompt_text,
+                        'user_message': user_message[:500] + "..." if len(user_message) > 500 else user_message,
+                        'full_system_prompt': prompt_text,
+                        'full_user_message': user_message
+                    },
+                    'response': result
+                }
+                
+                return result, None
+                
+            except anthropic.RateLimitError as e:
+                error_details = str(e)
+                if "input tokens" in error_details.lower():
+                    if attempt < max_retries - 1:
+                        st.warning(f"⚠️ Превышен лимит входных токенов. Попытка {attempt + 2}/{max_retries} через некоторое время...")
+                        continue
+                    else:
+                        return None, "Данные слишком большие. Подождите несколько минут и попробуйте снова."
+                else:
+                    if attempt < max_retries - 1:
+                        continue
+                    else:
+                        return None, "Превышен лимит запросов API. Пожалуйста, подождите 5-10 минут и попробуйте снова."
+                        
+            except Exception as e:
+                error_str = str(e)
+                if "rate_limit" in error_str.lower() or "429" in error_str:
+                    if attempt < max_retries - 1:
+                        continue
+                    else:
+                        return None, "Превышен лимит запросов. Подождите 5-10 минут перед следующей попыткой."
+                elif "timeout" in error_str.lower():
+                    if attempt < max_retries - 1:
+                        st.warning("⏱️ Таймаут запроса. Повторная попытка...")
+                        continue
+                    else:
+                        return None, "Превышено время ожидания ответа. Попробуйте еще раз."
+                else:
+                    return None, f"Ошибка: {error_str[:200]}"
+                    
+    except Exception as e:
+        return None, f"Ошибка при создании вариантов текста превью: {str(e)}"
 
 # Функция для создания аннотации референса
 def create_annotation_orig():
@@ -1941,6 +2062,92 @@ if create_synopsis_red_clicked:
                     st.session_state.synopsis_red = synopsis_red
                     st.success(f"✅ Синопсис изменённый создан ({len(synopsis_red)} символов)")
                     st.rerun()
+
+# Сгенерировать варианты текста превью - заголовок и кнопка в одной строке
+col3_header, col3_btn = st.columns([4, 1])
+with col3_header:
+    st.markdown("**Сгенерировать варианты текста превью**")
+with col3_btn:
+    create_thumbnail_variants_clicked = st.button("Создать", key="create_thumbnail_variants")
+
+# Поле для отображения вариантов текста превью (показываем всегда, если есть данные)
+if st.session_state.get('thumbnail_variants', ''):
+    st.text_area(
+        "Варианты текста превью",
+        value=st.session_state.thumbnail_variants,
+        height=400,
+        key="thumbnail_variants_display",
+        label_visibility="collapsed"
+    )
+    
+    # Свёрнутый блок с информацией о запросе к API
+    if st.session_state.get('api_history_thumbnail_variants'):
+        with st.expander("🔍 Детали запроса к LLM", expanded=False):
+            api_data = st.session_state.api_history_thumbnail_variants
+            st.markdown("**Параметры запроса:**")
+            st.code(f"""
+Модель: {api_data['request']['model']}
+Макс. токенов: {api_data['request']['max_tokens']}
+Температура: {api_data['request']['temperature']}
+""")
+            st.markdown("**Системный промпт (начало):**")
+            st.text(api_data['request']['system_prompt'])
+            st.markdown("**Сообщение пользователя (начало):**")
+            st.text(api_data['request']['user_message'])
+            
+            # Полные версии в отдельных вкладках
+            tab1, tab2, tab3 = st.tabs(["Полный системный промпт", "Полное сообщение", "Ответ LLM"])
+            with tab1:
+                st.text_area("Системный промпт", value=api_data['request']['full_system_prompt'], height=300, key="full_system_prompt_variants", label_visibility="collapsed")
+            with tab2:
+                st.text_area("Сообщение пользователя", value=api_data['request']['full_user_message'], height=300, key="full_user_message_variants", label_visibility="collapsed")
+            with tab3:
+                st.text_area("Ответ модели", value=api_data['response'], height=300, key="full_response_variants", label_visibility="collapsed")
+
+# Обработка нажатия кнопки создания вариантов текста превью
+if create_thumbnail_variants_clicked:
+    # Проверяем наличие текста с превью
+    if not st.session_state.get('thumbnail_text', ''):
+        # Если нет текста с превью, проверяем video_id
+        if not st.session_state.video_id:
+            st.warning("⚠️ Данные о видео не найдены. Пожалуйста, сначала введите ссылку на видео и нажмите 'Получить данные референса'")
+        else:
+            # Есть video_id, но нет текста с превью - получаем его
+            with st.spinner("🖼️ Получение текста с превью..."):
+                thumbnail_text = get_thumbnail_text(st.session_state.video_id)
+                st.session_state.thumbnail_text = thumbnail_text if thumbnail_text else ""
+                
+                if not st.session_state.thumbnail_text:
+                    st.error("❌ Не удалось получить текст с превью")
+                else:
+                    st.success("✅ Текст с превью получен")
+                    
+                    # Проверяем наличие измененного синопсиса
+                    if not st.session_state.get('synopsis_red', ''):
+                        st.warning("⚠️ Сначала необходимо создать измененный синопсис")
+                    else:
+                        # Создаем варианты текста превью
+                        with st.spinner("🤖 Генерирую варианты текста превью..."):
+                            variants, error = create_thumbnail_variants(st.session_state.thumbnail_text, st.session_state.synopsis_red)
+                            if error:
+                                st.error(f"❌ {error}")
+                            else:
+                                st.session_state.thumbnail_variants = variants
+                                st.success(f"✅ Варианты текста превью созданы")
+                                st.rerun()
+    elif not st.session_state.get('synopsis_red', ''):
+        # Есть текст с превью, но нет измененного синопсиса
+        st.warning("⚠️ Сначала необходимо создать измененный синопсис")
+    else:
+        # Есть все необходимые данные
+        with st.spinner("🤖 Генерирую варианты текста превью..."):
+            variants, error = create_thumbnail_variants(st.session_state.thumbnail_text, st.session_state.synopsis_red)
+            if error:
+                st.error(f"❌ {error}")
+            else:
+                st.session_state.thumbnail_variants = variants
+                st.success(f"✅ Варианты текста превью созданы")
+                st.rerun()
 
 # Секция сценария
 st.markdown("---")
