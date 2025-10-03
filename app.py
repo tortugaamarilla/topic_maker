@@ -92,8 +92,6 @@ if 'comment_on_video' not in st.session_state:
     st.session_state.comment_on_video = ""
 if 'api_history_comment_on_video' not in st.session_state:
     st.session_state.api_history_comment_on_video = {}
-if 'user_comment' not in st.session_state:
-    st.session_state.user_comment = ""
 if 'reply_to_comment' not in st.session_state:
     st.session_state.reply_to_comment = ""
 if 'api_history_reply_to_comment' not in st.session_state:
@@ -2226,27 +2224,25 @@ if create_comment_on_video_clicked:
 # Ответить на комментарий пользователя
 st.markdown("**Ответить на комментарий пользователя**")
 
-# Поле для ввода комментария пользователя
-user_comment = st.text_area(
-    "Комментарий пользователя",
-    value=st.session_state.get('user_comment', ''),
-    height=100,
-    placeholder="Введите комментарий пользователя, на который нужно ответить",
-    key="user_comment_input"
-)
-# Сохраняем значение в session_state
-st.session_state.user_comment = user_comment
-
-# Кнопка создания ответа
-create_reply_clicked = st.button("Создать", key="create_reply_to_comment")
+# Используем форму для правильной обработки ввода
+with st.form("reply_to_comment_form"):
+    # Поле для ввода комментария пользователя
+    user_comment_input = st.text_area(
+        "Комментарий пользователя",
+        height=100,
+        placeholder="Введите комментарий пользователя, на который нужно ответить"
+    )
+    
+    # Кнопка создания ответа внутри формы
+    create_reply_clicked = st.form_submit_button("Создать")
 
 # Поле для отображения ответа (показываем всегда, если есть данные)
 if st.session_state.get('reply_to_comment', ''):
+    # Убираем key, чтобы значение обновлялось динамически
     st.text_area(
         "Ответ на комментарий",
         value=st.session_state.reply_to_comment,
         height=200,
-        key="reply_to_comment_display",
         label_visibility="collapsed"
     )
     
@@ -2268,16 +2264,19 @@ if st.session_state.get('reply_to_comment', ''):
             # Полные версии в отдельных вкладках
             tab1, tab2, tab3 = st.tabs(["Полный системный промпт", "Полное сообщение", "Ответ LLM"])
             with tab1:
-                st.text_area("Системный промпт", value=api_data['request']['full_system_prompt'], height=300, key="full_system_prompt_reply", label_visibility="collapsed")
+                st.text_area("Системный промпт", value=api_data['request']['full_system_prompt'], height=300, label_visibility="collapsed")
             with tab2:
-                st.text_area("Сообщение пользователя", value=api_data['request']['full_user_message'], height=300, key="full_user_message_reply", label_visibility="collapsed")
+                st.text_area("Сообщение пользователя", value=api_data['request']['full_user_message'], height=300, label_visibility="collapsed")
             with tab3:
-                st.text_area("Ответ модели", value=api_data['response'], height=300, key="full_response_reply", label_visibility="collapsed")
+                st.text_area("Ответ модели", value=api_data['response'], height=300, label_visibility="collapsed")
 
 # Обработка нажатия кнопки создания ответа на комментарий
 if create_reply_clicked:
+    # Используем значение напрямую из формы
+    current_user_comment = user_comment_input
+    
     # Проверяем наличие комментария пользователя
-    if not user_comment:
+    if not current_user_comment:
         st.warning("⚠️ Пожалуйста, введите комментарий пользователя")
     else:
         # Проверяем наличие транскрипции
@@ -2308,20 +2307,30 @@ if create_reply_clicked:
                         
                         # Теперь создаем ответ на комментарий
                         with st.spinner("🤖 Создаю ответ на комментарий..."):
-                            reply, error = create_reply_to_comment(user_comment)
+                            reply, error = create_reply_to_comment(current_user_comment)
                             if error:
                                 st.error(f"❌ {error}")
                             else:
+                                # Очищаем старые кэшированные значения виджетов
+                                keys_to_remove = [k for k in st.session_state.keys() if 'reply' in k.lower() and k != 'reply_to_comment' and k != 'api_history_reply_to_comment']
+                                for key in keys_to_remove:
+                                    del st.session_state[key]
+                                
                                 st.session_state.reply_to_comment = reply
                                 st.success(f"✅ Ответ создан ({len(reply)} символов)")
                                 st.rerun()
         else:
             # Есть транскрипция - создаем ответ
             with st.spinner("🤖 Создаю ответ на комментарий..."):
-                reply, error = create_reply_to_comment(user_comment)
+                reply, error = create_reply_to_comment(current_user_comment)
                 if error:
                     st.error(f"❌ {error}")
                 else:
+                    # Очищаем старые кэшированные значения виджетов
+                    keys_to_remove = [k for k in st.session_state.keys() if 'reply' in k.lower() and k != 'reply_to_comment' and k != 'api_history_reply_to_comment']
+                    for key in keys_to_remove:
+                        del st.session_state[key]
+                    
                     st.session_state.reply_to_comment = reply
                     st.success(f"✅ Ответ создан ({len(reply)} символов)")
                     st.rerun()
