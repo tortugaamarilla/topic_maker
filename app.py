@@ -6,7 +6,8 @@ import base64
 import time
 import ssl
 import json
-from typing import Tuple, Optional
+import logging
+from typing import Tuple, Optional, Dict, List, Any
 from PIL import Image
 import requests
 from googleapiclient.discovery import build
@@ -14,18 +15,163 @@ from googleapiclient.errors import HttpError
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 import anthropic
 import yt_dlp
+from datetime import datetime
+import random
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Для лучшей совместимости с yt-dlp
 ssl._create_default_https_context = ssl._create_unverified_context
 
-# Параметры прокси для получения транскрипции
-PROXY_HOST = "185.76.11.214"
-PROXY_PORT = 80
-PROXY_USERNAME = "krdxwmej-18"
-PROXY_PASSWORD = "r0ajol0cnax6"
 
+class ProxyManager:
+    """Менеджер для управления ротацией прокси-серверов"""
+    
+    def __init__(self, config_file: str = "proxy_config.json"):
+        self.config_file = config_file
+        self.proxies = []
+        self.current_index = 0
+        self.max_retries_per_proxy = 2
+        self.request_timeout = 30
+        self.last_successful_proxy = None
+        self.proxy_attempts = {}  # Счетчик попыток для каждого прокси
+        self.load_config()
+        
+    def load_config(self):
+        """Загружает конфигурацию прокси из файла"""
+        try:
+            if os.path.exists(self.config_file):
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    proxy_strings = config.get('proxies', [])
+                    self.max_retries_per_proxy = config.get('max_retries_per_proxy', 2)
+                    self.request_timeout = config.get('request_timeout', 30)
+                    
+                    # Парсим прокси из строкового формата host:port:username:password
+                    self.proxies = []
+                    for proxy_str in proxy_strings:
+                        if isinstance(proxy_str, str) and ':' in proxy_str:
+                            parts = proxy_str.strip().split(':')
+                            if len(parts) == 4:
+                                self.proxies.append({
+                                    "host": parts[0],
+                                    "port": int(parts[1]),
+                                    "username": parts[2],
+                                    "password": parts[3]
+                                })
+                            else:
+                                logger.warning(f"Неверный формат прокси: {proxy_str}")
+                        elif isinstance(proxy_str, dict):
+                            # Поддержка старого формата для обратной совместимости
+                            self.proxies.append(proxy_str)
+                    
+                    # Инициализируем счетчики попыток
+                    for i in range(len(self.proxies)):
+                        self.proxy_attempts[i] = 0
+                    logger.info(f"Загружено {len(self.proxies)} прокси-серверов из {self.config_file}")
+            else:
+                # Fallback к старому прокси если нет конфига
+                self.proxies = [{
+                    "host": "185.76.11.214",
+                    "port": 80,
+                    "username": "krdxwmej-18",
+                    "password": "r0ajol0cnax6"
+                }]
+                logger.warning(f"Файл конфигурации {self.config_file} не найден, используется fallback прокси")
+        except Exception as e:
+            logger.error(f"Ошибка загрузки конфигурации прокси: {e}")
+            # Fallback к старому прокси в случае ошибки
+            self.proxies = [{
+                "host": "185.76.11.214",
+                "port": 80,
+                "username": "krdxwmej-18",
+                "password": "r0ajol0cnax6"
+            }]
+    
+    def get_proxy_url(self, index: int = None) -> str:
+        """Возвращает URL прокси по индексу"""
+        if not self.proxies:
+            return None
+        
+        if index is None:
+            index = self.current_index
+            
+        if 0 <= index < len(self.proxies):
+            proxy = self.proxies[index]
+            return f"http://{proxy['username']}:{proxy['password']}@{proxy['host']}:{proxy['port']}"
+        return None
+    
+    def get_proxy_info(self, index: int = None) -> str:
+        """Возвращает информацию о прокси для отображения"""
+        if not self.proxies:
+            return "No proxy"
+        
+        if index is None:
+            index = self.current_index
+            
+        if 0 <= index < len(self.proxies):
+            proxy = self.proxies[index]
+            return f"{proxy['host']}:{proxy['port']} (user: {proxy['username'][:8]}...)"
+        return "Unknown proxy"
+    
+    def get_next_proxy(self) -> Tuple[str, int]:
+        """Возвращает следующий прокси и его индекс"""
+        if not self.proxies:
+            return None, -1
+        
+        # Переходим к следующему прокси
+        self.current_index = (self.current_index + 1) % len(self.proxies)
+        return self.get_proxy_url(), self.current_index
+    
+    def reset_proxy_attempts(self, index: int):
+        """Сбрасывает счетчик попыток для прокси"""
+        if index in self.proxy_attempts:
+            self.proxy_attempts[index] = 0
+    
+    def increment_proxy_attempts(self, index: int) -> int:
+        """Увеличивает счетчик попыток для прокси и возвращает текущее количество"""
+        if index not in self.proxy_attempts:
+            self.proxy_attempts[index] = 0
+        self.proxy_attempts[index] += 1
+        return self.proxy_attempts[index]
+    
+    def should_try_proxy(self, index: int) -> bool:
+        """Проверяет, стоит ли пробовать данный прокси"""
+        return self.proxy_attempts.get(index, 0) < self.max_retries_per_proxy
+    
+    def mark_successful(self, index: int):
+        """Отмечает прокси как успешно использованный"""
+        self.last_successful_proxy = index
+        self.reset_proxy_attempts(index)
+        if 'proxy_success_info' not in st.session_state:
+            st.session_state.proxy_success_info = {}
+        st.session_state.proxy_success_info['last_successful_index'] = index
+        st.session_state.proxy_success_info['last_successful_info'] = self.get_proxy_info(index)
+        st.session_state.proxy_success_info['timestamp'] = datetime.now().isoformat()
+        logger.info(f"Прокси {self.get_proxy_info(index)} успешно использован")
+    
+    def get_all_proxies(self) -> List[Tuple[str, int]]:
+        """Возвращает список всех прокси с их индексами"""
+        return [(self.get_proxy_url(i), i) for i in range(len(self.proxies))]
+    
+    def shuffle_proxies(self):
+        """Перемешивает список прокси для рандомизации"""
+        if len(self.proxies) > 1:
+            random.shuffle(self.proxies)
+            # Сбрасываем счетчики после перемешивания
+            self.proxy_attempts = {i: 0 for i in range(len(self.proxies))}
+            logger.info("Список прокси перемешан")
+
+
+# Создаем глобальный экземпляр ProxyManager
+proxy_manager = ProxyManager()
+
+# Старые функции для совместимости (будут удалены после рефакторинга)
 def _get_proxy_url():
-    return f"http://{PROXY_USERNAME}:{PROXY_PASSWORD}@{PROXY_HOST}:{PROXY_PORT}"
+    """Совместимость со старым кодом"""
+    return proxy_manager.get_proxy_url()
 
 # Настройка страницы
 st.set_page_config(
@@ -96,6 +242,11 @@ if 'reply_to_comment' not in st.session_state:
     st.session_state.reply_to_comment = ""
 if 'api_history_reply_to_comment' not in st.session_state:
     st.session_state.api_history_reply_to_comment = {}
+# Информация о прокси и попытках получения транскрипции
+if 'proxy_success_info' not in st.session_state:
+    st.session_state.proxy_success_info = {}
+if 'transcript_attempts_log' not in st.session_state:
+    st.session_state.transcript_attempts_log = []
 
 # Функция для извлечения ID видео из URL YouTube
 def extract_video_id(url):
@@ -159,14 +310,18 @@ def get_video_title(video_id):
 # Функция для получения транскрипции видео через yt-dlp
 def get_video_transcript_ytdlp(video_id: str) -> Tuple[str, str]:
     """
-    Получает транскрипцию видео через yt-dlp
+    Получает транскрипцию видео через yt-dlp с ротацией прокси
     Возвращает: (текст_без_временных_меток, текст_с_временными_метками)
     """
     
     # Получаем выбранный язык
     selected_lang = st.session_state.get('subtitle_language', 'en')
     
-    ydl_opts = {
+    # Очищаем лог попыток для новой транскрипции
+    st.session_state.transcript_attempts_log = []
+    
+    # Базовые опции yt-dlp
+    base_ydl_opts = {
         'quiet': True,
         'no_warnings': True,
         'extract_flat': False,
@@ -184,58 +339,144 @@ def get_video_transcript_ytdlp(video_id: str) -> Tuple[str, str]:
         'referer': 'https://www.youtube.com/',
     }
     
-    # Добавляем прокси если включено
-    if st.session_state.get('use_proxy', False):
-        ydl_opts['proxy'] = _get_proxy_url()
+    # Если прокси отключены, пробуем напрямую
+    if not st.session_state.get('use_proxy', False):
+        logger.info("Попытка получить транскрипцию без прокси")
+        st.session_state.transcript_attempts_log.append({
+            'proxy': 'Direct connection (no proxy)',
+            'attempt': 1,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+        with yt_dlp.YoutubeDL(base_ydl_opts) as ydl:
+            try:
+                info = ydl.extract_info(
+                    f'https://www.youtube.com/watch?v={video_id}', 
+                    download=False
+                )
+                result = _process_subtitles_info(info, selected_lang)
+                if result[0] and not result[0].startswith("Субтитры на") and not result[0].startswith("Не удалось"):
+                    st.session_state.transcript_attempts_log[-1]['success'] = True
+                    logger.info("Транскрипция успешно получена без прокси")
+                    return result
+            except Exception as e:
+                st.session_state.transcript_attempts_log[-1]['error'] = str(e)
+                logger.warning(f"Ошибка получения транскрипции без прокси: {e}")
     
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        try:
-            # Извлекаем информацию о видео БЕЗ скачивания
-            info = ydl.extract_info(
-                f'https://www.youtube.com/watch?v={video_id}', 
-                download=False
-            )
+    # Пробуем с прокси из списка
+    all_proxies = proxy_manager.get_all_proxies()
+    total_attempts = 0
+    max_total_attempts = len(all_proxies) * proxy_manager.max_retries_per_proxy
+    
+    for proxy_round in range(proxy_manager.max_retries_per_proxy):
+        for proxy_url, proxy_index in all_proxies:
+            if not proxy_manager.should_try_proxy(proxy_index):
+                continue
+                
+            total_attempts += 1
+            proxy_info = proxy_manager.get_proxy_info(proxy_index)
             
-            # Приоритет: 1) обычные субтитры 2) автоматические
-            subtitles = info.get('subtitles', {})
-            automatic_captions = info.get('automatic_captions', {})
+            logger.info(f"Попытка {total_attempts}/{max_total_attempts} с прокси: {proxy_info}")
             
-            # Объединяем оба источника
-            all_subs = {**automatic_captions, **subtitles}
+            # Записываем попытку в лог
+            attempt_log = {
+                'proxy': proxy_info,
+                'attempt': total_attempts,
+                'timestamp': datetime.now().isoformat(),
+                'proxy_index': proxy_index
+            }
+            st.session_state.transcript_attempts_log.append(attempt_log)
             
-            # Получаем выбранный язык
-            selected_lang = st.session_state.get('subtitle_language', 'en')
+            # Копируем опции и добавляем прокси
+            ydl_opts = base_ydl_opts.copy()
+            ydl_opts['proxy'] = proxy_url
             
-            # Сначала пытаемся получить субтитры на выбранном языке
-            if selected_lang in all_subs and all_subs[selected_lang]:
-                # Берем первый доступный формат
-                for sub_format in all_subs[selected_lang]:
-                    if sub_format.get('url'):
-                        return _fetch_and_parse_subtitles(
-                            sub_format['url'], 
-                            sub_format.get('ext', 'json3')
-                        )
-            
-            # Если не нашли субтитры на выбранном языке
-            lang_names = {'en': 'английском', 'es': 'испанском', 'pt': 'португальском', 'ru': 'русском'}
-            lang_name = lang_names.get(selected_lang, selected_lang)
-            return f"Субтитры на {lang_name} языке недоступны для этого видео", f"Субтитры на {lang_name} языке недоступны для этого видео"
-            
-        except Exception as e:
-            print(f"yt-dlp error: {str(e)}")
-            return "Не удалось получить транскрипцию", "Не удалось получить транскрипцию"
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                try:
+                    # Извлекаем информацию о видео
+                    info = ydl.extract_info(
+                        f'https://www.youtube.com/watch?v={video_id}', 
+                        download=False
+                    )
+                    
+                    result = _process_subtitles_info(info, selected_lang)
+                    
+                    # Проверяем, успешно ли получены субтитры
+                    if result[0] and not result[0].startswith("Субтитры на") and not result[0].startswith("Не удалось"):
+                        # Успех! Отмечаем прокси как успешный
+                        proxy_manager.mark_successful(proxy_index)
+                        st.session_state.transcript_attempts_log[-1]['success'] = True
+                        logger.info(f"Транскрипция успешно получена с прокси {proxy_info} (попытка {total_attempts})")
+                        return result
+                    else:
+                        st.session_state.transcript_attempts_log[-1]['error'] = "Субтитры недоступны"
+                        
+                except Exception as e:
+                    error_msg = str(e)
+                    st.session_state.transcript_attempts_log[-1]['error'] = error_msg
+                    logger.warning(f"Ошибка с прокси {proxy_info}: {error_msg}")
+                    
+                    # Увеличиваем счетчик попыток для этого прокси
+                    proxy_manager.increment_proxy_attempts(proxy_index)
+                    
+                    # Если это ошибка блокировки, пробуем следующий прокси
+                    if "HTTP Error 429" in error_msg or "too many requests" in error_msg.lower():
+                        logger.info(f"Прокси {proxy_info} заблокирован, переходим к следующему")
+                        continue
+    
+    # Если все попытки исчерпаны
+    logger.error(f"Не удалось получить транскрипцию после {total_attempts} попыток")
+    lang_names = {'en': 'английском', 'es': 'испанском', 'pt': 'португальском', 'ru': 'русском'}
+    lang_name = lang_names.get(selected_lang, selected_lang)
+    return f"Не удалось получить транскрипцию после {total_attempts} попыток", f"Не удалось получить транскрипцию после {total_attempts} попыток"
+
+
+def _process_subtitles_info(info: dict, selected_lang: str) -> Tuple[str, str]:
+    """Обрабатывает информацию о субтитрах из yt-dlp"""
+    try:
+        # Приоритет: 1) обычные субтитры 2) автоматические
+        subtitles = info.get('subtitles', {})
+        automatic_captions = info.get('automatic_captions', {})
+        
+        # Объединяем оба источника
+        all_subs = {**automatic_captions, **subtitles}
+        
+        # Сначала пытаемся получить субтитры на выбранном языке
+        if selected_lang in all_subs and all_subs[selected_lang]:
+            # Берем первый доступный формат
+            for sub_format in all_subs[selected_lang]:
+                if sub_format.get('url'):
+                    return _fetch_and_parse_subtitles(
+                        sub_format['url'], 
+                        sub_format.get('ext', 'json3')
+                    )
+        
+        # Если не нашли субтитры на выбранном языке
+        lang_names = {'en': 'английском', 'es': 'испанском', 'pt': 'португальском', 'ru': 'русском'}
+        lang_name = lang_names.get(selected_lang, selected_lang)
+        return f"Субтитры на {lang_name} языке недоступны для этого видео", f"Субтитры на {lang_name} языке недоступны для этого видео"
+    except Exception as e:
+        logger.error(f"Ошибка обработки субтитров: {e}")
+        return "Не удалось обработать субтитры", "Не удалось обработать субтитры"
 
 
 def _fetch_and_parse_subtitles(url: str, format_type: str) -> Tuple[str, str]:
-    """Загружает и парсит субтитры"""
+    """Загружает и парсит субтитры с использованием текущего прокси из ProxyManager"""
     try:
-        # Используем прокси если нужно
+        # Используем прокси если включено
         proxies = {}
         if st.session_state.get('use_proxy', False):
-            proxy_url = _get_proxy_url()
-            proxies = {'http': proxy_url, 'https': proxy_url}
+            # Получаем текущий прокси из ProxyManager
+            proxy_url = proxy_manager.get_proxy_url()
+            if proxy_url:
+                proxies = {'http': proxy_url, 'https': proxy_url}
+                logger.info(f"Загрузка субтитров через прокси: {proxy_manager.get_proxy_info()}")
+            else:
+                logger.warning("ProxyManager не вернул прокси URL")
+        else:
+            logger.info("Загрузка субтитров без прокси")
         
-        response = requests.get(url, proxies=proxies, timeout=30)
+        response = requests.get(url, proxies=proxies, timeout=proxy_manager.request_timeout)
         response.raise_for_status()
         
         # Парсим в зависимости от формата
@@ -247,8 +488,14 @@ def _fetch_and_parse_subtitles(url: str, format_type: str) -> Tuple[str, str]:
             # Пытаемся как JSON
             return _parse_json_subtitles(response.text)
             
+    except requests.exceptions.ProxyError as e:
+        logger.error(f"Ошибка прокси при загрузке субтитров: {e}")
+        return "Ошибка прокси при загрузке субтитров", "Ошибка прокси при загрузке субтитров"
+    except requests.exceptions.Timeout as e:
+        logger.error(f"Таймаут при загрузке субтитров: {e}")
+        return "Таймаут при загрузке субтитров", "Таймаут при загрузке субтитров"
     except Exception as e:
-        print(f"Subtitle fetch error: {str(e)}")
+        logger.error(f"Ошибка загрузки субтитров: {e}")
         return "Ошибка загрузки субтитров", "Ошибка загрузки субтитров"
 
 
@@ -333,152 +580,192 @@ def _format_time(seconds: float) -> str:
 
 # Функция для получения транскрипции видео (оригинальная через YouTubeTranscriptApi)
 def get_video_transcript_api(video_id):
-    # Включение прокси при необходимости (только на время запроса)
-    proxy_url = None
-    # Сохраняем текущее окружение прокси (верхний и нижний регистры)
-    old_http_proxy = os.environ.get('HTTP_PROXY')
-    old_https_proxy = os.environ.get('HTTPS_PROXY')
-    old_http_proxy_l = os.environ.get('http_proxy')
-    old_https_proxy_l = os.environ.get('https_proxy')
-    old_all_proxy = os.environ.get('ALL_PROXY')
-    old_all_proxy_l = os.environ.get('all_proxy')
-    try:
-        if st.session_state.get('use_proxy', False):
-            proxy_url = _get_proxy_url()
-            os.environ['HTTP_PROXY'] = proxy_url
-            os.environ['HTTPS_PROXY'] = proxy_url
-            os.environ['http_proxy'] = proxy_url
-            os.environ['https_proxy'] = proxy_url
-            os.environ['ALL_PROXY'] = proxy_url
-            os.environ['all_proxy'] = proxy_url
-        # Создаем экземпляр API
-        api = YouTubeTranscriptApi()
-        
-        # Пробуем получить транскрипцию на выбранном языке
-        transcript_data = None
-        
-        # Получаем выбранный язык
-        selected_lang = st.session_state.get('subtitle_language', 'en')
-        
-        # Пробуем получить транскрипцию на выбранном языке
+    """Получает транскрипцию через YouTubeTranscriptApi с ротацией прокси"""
+    
+    # Получаем выбранный язык
+    selected_lang = st.session_state.get('subtitle_language', 'en')
+    
+    # Очищаем лог попыток для новой транскрипции
+    st.session_state.transcript_attempts_log = []
+    
+    # Функция для попытки получить транскрипцию с заданными прокси
+    def try_get_transcript(proxies_dict=None, proxy_info="Direct connection"):
         try:
-            if proxy_url:
-                # При включенном прокси используем явную передачу прокси в библиотеку
-                proxies = {"http": proxy_url, "https": proxy_url}
-                transcript_data = YouTubeTranscriptApi.get_transcript(
-                    video_id,
-                    languages=[selected_lang],
-                    proxies=proxies
-                )
-            else:
-                # Пробуем с конкретным языком
-                transcript_data = api.fetch(video_id, languages=[selected_lang])
-        except:
+            # Создаем экземпляр API
+            api = YouTubeTranscriptApi()
             transcript_data = None
-        
-        # Если не получилось на выбранном языке, пробуем получить автоматические субтитры
-        if not transcript_data:
+            
+            # Пробуем получить транскрипцию на выбранном языке
             try:
-                if proxy_url:
-                    proxies = {"http": proxy_url, "https": proxy_url}
-                    # Пробуем получить автоматические субтитры на выбранном языке
-                    transcript_list = YouTubeTranscriptApi.list_transcripts(video_id, proxies=proxies)
+                if proxies_dict:
+                    transcript_data = YouTubeTranscriptApi.get_transcript(
+                        video_id,
+                        languages=[selected_lang],
+                        proxies=proxies_dict
+                    )
                 else:
-                    transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-                
-                # Ищем автоматические субтитры на выбранном языке
-                for transcript in transcript_list:
-                    if transcript.language_code == selected_lang:
-                        if proxy_url:
-                            transcript_data = transcript.fetch(proxies=proxies)
-                        else:
-                            transcript_data = transcript.fetch()
-                        break
+                    transcript_data = api.fetch(video_id, languages=[selected_lang])
             except:
-                pass
+                transcript_data = None
+            
+            # Если не получилось на выбранном языке, пробуем получить автоматические субтитры
+            if not transcript_data:
+                try:
+                    if proxies_dict:
+                        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id, proxies=proxies_dict)
+                    else:
+                        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+                    
+                    # Ищем субтитры на выбранном языке
+                    for transcript in transcript_list:
+                        if transcript.language_code == selected_lang:
+                            if proxies_dict:
+                                transcript_data = transcript.fetch(proxies=proxies_dict)
+                            else:
+                                transcript_data = transcript.fetch()
+                            break
+                except:
+                    pass
+            
+            return transcript_data
+            
+        except Exception as e:
+            logger.warning(f"Ошибка с {proxy_info}: {str(e)}")
+            return None
+    
+    # Если прокси отключены, пробуем напрямую
+    if not st.session_state.get('use_proxy', False):
+        logger.info("Попытка получить транскрипцию через API без прокси")
+        st.session_state.transcript_attempts_log.append({
+            'proxy': 'Direct connection (no proxy)',
+            'attempt': 1,
+            'timestamp': datetime.now().isoformat()
+        })
         
-        # Собираем текст транскрипции в двух форматах
+        transcript_data = try_get_transcript(None, "Direct connection")
         if transcript_data:
-            # Унификация доступа к полям для двух вариантов (list[dict] и FetchedTranscript)
-            def _get_text(entry):
-                try:
-                    return str(entry.get('text', ''))
-                except Exception:
-                    return str(getattr(entry, 'text', ''))
-            def _get_start(entry):
-                try:
-                    return float(entry.get('start', 0))
-                except Exception:
-                    return float(getattr(entry, 'start', 0))
-            
-            # Версия без временных меток
-            full_text = '\n'.join([_get_text(entry) for entry in transcript_data])
-            
-            # Версия с временными метками
-            def format_time(seconds):
-                """Форматирует время в формат MM:SS или HH:MM:SS"""
-                hours = int(seconds // 3600)
-                minutes = int((seconds % 3600) // 60)
-                secs = int(seconds % 60)
-                if hours > 0:
-                    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+            st.session_state.transcript_attempts_log[-1]['success'] = True
+            return _format_transcript_data(transcript_data)
+        else:
+            st.session_state.transcript_attempts_log[-1]['error'] = "Не удалось получить транскрипцию"
+    
+    # Пробуем с прокси из списка с ротацией
+    all_proxies = proxy_manager.get_all_proxies()
+    total_attempts = 0
+    max_total_attempts = len(all_proxies) * proxy_manager.max_retries_per_proxy
+    
+    # Сохраняем текущее окружение прокси
+    old_env_proxies = {
+        'HTTP_PROXY': os.environ.get('HTTP_PROXY'),
+        'HTTPS_PROXY': os.environ.get('HTTPS_PROXY'),
+        'http_proxy': os.environ.get('http_proxy'),
+        'https_proxy': os.environ.get('https_proxy'),
+        'ALL_PROXY': os.environ.get('ALL_PROXY'),
+        'all_proxy': os.environ.get('all_proxy')
+    }
+    
+    try:
+        for proxy_round in range(proxy_manager.max_retries_per_proxy):
+            for proxy_url, proxy_index in all_proxies:
+                if not proxy_manager.should_try_proxy(proxy_index):
+                    continue
+                
+                total_attempts += 1
+                proxy_info = proxy_manager.get_proxy_info(proxy_index)
+                
+                logger.info(f"API попытка {total_attempts}/{max_total_attempts} с прокси: {proxy_info}")
+                
+                # Записываем попытку в лог
+                attempt_log = {
+                    'proxy': proxy_info,
+                    'attempt': total_attempts,
+                    'timestamp': datetime.now().isoformat(),
+                    'proxy_index': proxy_index
+                }
+                st.session_state.transcript_attempts_log.append(attempt_log)
+                
+                # Устанавливаем переменные окружения для прокси
+                os.environ['HTTP_PROXY'] = proxy_url
+                os.environ['HTTPS_PROXY'] = proxy_url
+                os.environ['http_proxy'] = proxy_url
+                os.environ['https_proxy'] = proxy_url
+                os.environ['ALL_PROXY'] = proxy_url
+                os.environ['all_proxy'] = proxy_url
+                
+                # Также создаем словарь прокси для явной передачи
+                proxies_dict = {"http": proxy_url, "https": proxy_url}
+                
+                transcript_data = try_get_transcript(proxies_dict, proxy_info)
+                
+                if transcript_data:
+                    # Успех! Отмечаем прокси как успешный
+                    proxy_manager.mark_successful(proxy_index)
+                    st.session_state.transcript_attempts_log[-1]['success'] = True
+                    logger.info(f"Транскрипция успешно получена через API с прокси {proxy_info} (попытка {total_attempts})")
+                    return _format_transcript_data(transcript_data)
                 else:
-                    return f"{minutes:02d}:{secs:02d}"
-            
-            text_with_timestamps = []
-            for entry in transcript_data:
-                start_time = _get_start(entry)
-                text = _get_text(entry)
-                text_with_timestamps.append(f"[{format_time(start_time)}] {text}")
-            
-            full_text_with_timestamps = '\n'.join(text_with_timestamps)
-            
-            return full_text, full_text_with_timestamps
-        else:
-            # Если не нашли субтитры на выбранном языке
-            lang_names = {'en': 'английском', 'es': 'испанском', 'pt': 'португальском', 'ru': 'русском'}
-            lang_name = lang_names.get(selected_lang, selected_lang)
-            return f"Субтитры на {lang_name} языке недоступны для этого видео", f"Субтитры на {lang_name} языке недоступны для этого видео"
-            
-    except Exception as e:
-        # Обработка различных типов ошибок
-        error_str = str(e)
-        if "no element found" in error_str.lower() or "xml" in error_str.lower():
-            lang_names = {'en': 'английском', 'es': 'испанском', 'pt': 'португальском', 'ru': 'русском'}
-            lang_name = lang_names.get(st.session_state.get('subtitle_language', 'en'), st.session_state.get('subtitle_language', 'en'))
-            return f"Субтитры на {lang_name} языке недоступны для этого видео", f"Субтитры на {lang_name} языке недоступны для этого видео"
-        else:
-            error_msg = f"Не удалось получить транскрипцию: {error_str[:200]}"
-            return error_msg, error_msg
+                    st.session_state.transcript_attempts_log[-1]['error'] = "Не удалось получить транскрипцию"
+                    proxy_manager.increment_proxy_attempts(proxy_index)
+    
     finally:
         # Восстанавливаем окружение прокси
-        if proxy_url is not None:
-            # Восстановление верхнего регистра
-            if old_http_proxy is None:
-                os.environ.pop('HTTP_PROXY', None)
+        for key, value in old_env_proxies.items():
+            if value is None:
+                os.environ.pop(key, None)
             else:
-                os.environ['HTTP_PROXY'] = old_http_proxy
-            if old_https_proxy is None:
-                os.environ.pop('HTTPS_PROXY', None)
+                os.environ[key] = value
+    
+    # Если все попытки исчерпаны
+    logger.error(f"Не удалось получить транскрипцию через API после {total_attempts} попыток")
+    lang_names = {'en': 'английском', 'es': 'испанском', 'pt': 'португальском', 'ru': 'русском'}
+    lang_name = lang_names.get(selected_lang, selected_lang)
+    return f"Не удалось получить транскрипцию после {total_attempts} попыток", f"Не удалось получить транскрипцию после {total_attempts} попыток"
+
+
+def _format_transcript_data(transcript_data):
+    """Форматирует данные транскрипции в два формата: с и без временных меток"""
+    if transcript_data:
+        # Унификация доступа к полям для двух вариантов (list[dict] и FetchedTranscript)
+        def _get_text(entry):
+            try:
+                return str(entry.get('text', ''))
+            except Exception:
+                return str(getattr(entry, 'text', ''))
+        def _get_start(entry):
+            try:
+                return float(entry.get('start', 0))
+            except Exception:
+                return float(getattr(entry, 'start', 0))
+        
+        # Версия без временных меток
+        full_text = '\n'.join([_get_text(entry) for entry in transcript_data])
+        
+        # Версия с временными метками
+        def format_time(seconds):
+            """Форматирует время в формат MM:SS или HH:MM:SS"""
+            hours = int(seconds // 3600)
+            minutes = int((seconds % 3600) // 60)
+            secs = int(seconds % 60)
+            if hours > 0:
+                return f"{hours:02d}:{minutes:02d}:{secs:02d}"
             else:
-                os.environ['HTTPS_PROXY'] = old_https_proxy
-            # Восстановление нижнего регистра
-            if old_http_proxy_l is None:
-                os.environ.pop('http_proxy', None)
-            else:
-                os.environ['http_proxy'] = old_http_proxy_l
-            if old_https_proxy_l is None:
-                os.environ.pop('https_proxy', None)
-            else:
-                os.environ['https_proxy'] = old_https_proxy_l
-            if old_all_proxy is None:
-                os.environ.pop('ALL_PROXY', None)
-            else:
-                os.environ['ALL_PROXY'] = old_all_proxy
-            if old_all_proxy_l is None:
-                os.environ.pop('all_proxy', None)
-            else:
-                os.environ['all_proxy'] = old_all_proxy_l
+                return f"{minutes:02d}:{secs:02d}"
+        
+        text_with_timestamps = []
+        for entry in transcript_data:
+            start_time = _get_start(entry)
+            text = _get_text(entry)
+            text_with_timestamps.append(f"[{format_time(start_time)}] {text}")
+        
+        full_text_with_timestamps = '\n'.join(text_with_timestamps)
+        
+        return full_text, full_text_with_timestamps
+    else:
+        # Если не нашли субтитры
+        selected_lang = st.session_state.get('subtitle_language', 'en')
+        lang_names = {'en': 'английском', 'es': 'испанском', 'pt': 'португальском', 'ru': 'русском'}
+        lang_name = lang_names.get(selected_lang, selected_lang)
+        return f"Субтитры на {lang_name} языке недоступны для этого видео", f"Субтитры на {lang_name} языке недоступны для этого видео"
 
 
 # Основная функция для получения транскрипции (выбирает метод)
@@ -1617,7 +1904,7 @@ with st.sidebar:
     
     # Отладочная информация
     with st.expander("🔍 Debug Info"):
-        st.write("Session State:")
+        st.write("**Session State:**")
         st.write(f"- video_id: {st.session_state.get('video_id', 'None')}")
         st.write(f"- video_title length: {len(st.session_state.get('video_title', ''))}")
         st.write(f"- thumbnail_text length: {len(st.session_state.get('thumbnail_text', ''))}")
@@ -1626,8 +1913,37 @@ with st.sidebar:
         st.write(f"- synopsis_red length: {len(st.session_state.get('synopsis_red', ''))}")
         st.write(f"- selected_model: {st.session_state.get('selected_model', 'None')}")
         st.write(f"- selected_model_preview: {st.session_state.get('selected_model_preview', 'None')}")
+        st.write(f"- transcript_method: {st.session_state.get('transcript_method', 'None')}")
+        st.write(f"- use_proxy: {st.session_state.get('use_proxy', False)}")
+        st.write(f"- subtitle_language: {st.session_state.get('subtitle_language', 'None')}")
         
-        st.write("\nSecrets Status:")
+        st.write("\n**Proxy Configuration:**")
+        st.write(f"- Total proxies loaded: {len(proxy_manager.proxies)}")
+        st.write(f"- Current proxy index: {proxy_manager.current_index}")
+        st.write(f"- Current proxy: {proxy_manager.get_proxy_info()}")
+        st.write(f"- Max retries per proxy: {proxy_manager.max_retries_per_proxy}")
+        st.write(f"- Request timeout: {proxy_manager.request_timeout} seconds")
+        
+        # Информация о последней успешной попытке
+        if 'proxy_success_info' in st.session_state and st.session_state.proxy_success_info:
+            st.write("\n**Last Successful Proxy:**")
+            success_info = st.session_state.proxy_success_info
+            st.write(f"- Proxy: {success_info.get('last_successful_info', 'N/A')}")
+            st.write(f"- Timestamp: {success_info.get('timestamp', 'N/A')}")
+        
+        # Информация о попытках получения транскрипции
+        if 'transcript_attempts_log' in st.session_state and st.session_state.transcript_attempts_log:
+            st.write("\n**Transcript Attempts Log:**")
+            for attempt in st.session_state.transcript_attempts_log[-5:]:  # Показываем последние 5 попыток
+                status = "✅ Success" if attempt.get('success') else f"❌ Failed: {attempt.get('error', 'Unknown error')[:50]}"
+                st.write(f"- Attempt {attempt.get('attempt', 'N/A')}: {attempt.get('proxy', 'N/A')} - {status}")
+            
+            # Статистика попыток
+            total_attempts = len(st.session_state.transcript_attempts_log)
+            successful_attempts = sum(1 for a in st.session_state.transcript_attempts_log if a.get('success'))
+            st.write(f"\n**Statistics:** {successful_attempts}/{total_attempts} successful attempts")
+        
+        st.write("\n**Secrets Status:**")
         try:
             st.write(f"- Secrets available: {hasattr(st, 'secrets')}")
             if hasattr(st, 'secrets'):
@@ -1637,15 +1953,25 @@ with st.sidebar:
         except Exception as e:
             st.write(f"- Error checking secrets: {e}")
         
-        if st.button("🔄 Очистить данные"):
-            st.session_state.video_id = None
-            st.session_state.video_title = ""
-            st.session_state.thumbnail_text = ""
-            st.session_state.transcript = ""
-            st.session_state.transcript_with_timestamps = ""
-            st.session_state.synopsis_orig = ""
-            st.session_state.synopsis_red = ""
-            st.rerun()
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 Очистить данные"):
+                st.session_state.video_id = None
+                st.session_state.video_title = ""
+                st.session_state.thumbnail_text = ""
+                st.session_state.transcript = ""
+                st.session_state.transcript_with_timestamps = ""
+                st.session_state.synopsis_orig = ""
+                st.session_state.synopsis_red = ""
+                st.session_state.proxy_success_info = {}
+                st.session_state.transcript_attempts_log = []
+                st.rerun()
+        
+        with col2:
+            if st.button("🔀 Перемешать прокси"):
+                proxy_manager.shuffle_proxies()
+                st.success("Список прокси перемешан!")
+                st.rerun()
 
 # Основной контент
 # Форма для ввода данных
