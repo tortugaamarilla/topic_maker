@@ -1384,10 +1384,10 @@ def create_scenario():
         
         # Загружаем промпт
         try:
-            with open("prompt scenario.txt", "r", encoding="utf-8") as file:
+            with open("prompt_scenario.txt", "r", encoding="utf-8") as file:
                 prompt_text = file.read()
         except FileNotFoundError:
-            return None, "Не найден файл prompt scenario.txt"
+            return None, "Не найден файл prompt_scenario.txt"
         
         # Проверяем наличие API ключа
         if "ANTHROPIC_API_KEY" not in st.secrets:
