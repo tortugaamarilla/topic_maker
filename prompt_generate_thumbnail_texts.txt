@@ -1,5 +1,6 @@
 Based on the Thumbnail reference text (example) and Story synopsis, create 15 Thumbnail text variations that match the synopsis and annotation content with varying degrees of similarity to the example (Thumbnail reference) and meet the requirements:
 - Thumbnail texts must be written in American English;
+- unlike Thumbnail reference text, the Thumbnail texts should be written in sentence case (not CapsLock);
 - each Thumbnail text length must not exceed 235 characters including spaces and punctuation;
 - each Thumbnail text length must not be less than 210 characters including spaces and punctuation;
 - each Thumbnail text must use direct speech from a story character (you can make it up, but keep it relevant to the synopsis);
