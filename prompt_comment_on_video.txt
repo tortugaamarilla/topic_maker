@@ -7,5 +7,10 @@ Using timestamps you can refer to specific time points in the video in your judg
 Use emojis in comments, but in moderation, only where they are needed.
 Use a few typos, abbreviations and slang of internet written communication of a native speaker of the commenter's language (for English language - USA). Sometimes you can abuse punctuation marks, as real people do when they write comments on YouTube.
 The comment should be quite short, dry and substantive, without unnecessary literary devices, reasoning, introductions and "fluff".
-Comment length 150-300 printed characters including spaces, punctuation marks and emojis.
+Comment length 150-300 printed characters including spaces (not words!), punctuation marks and emojis.
 IMPORTANT! The comment should be written in one paragraph (i.e. without line breaks and without empty lines).
+
+CRITICAL: Write everything as ONE continuous text block with NO line breaks, NO paragraphs, NO enters - just one flowing sentence.
+
+Example of desired format and length:
+"Thanks for the video! But at 2:45 you said X - isn't it actually Y? 🤔 Would love to hear your thoughts on this!"
