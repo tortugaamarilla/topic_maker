@@ -1191,7 +1191,7 @@ def create_thumbnail_variants(thumbnail_text, synopsis_red):
                     time.sleep(wait_time)
                 
                 # Формируем сообщение для модели
-                user_message = f"Превью референса:\n{thumbnail_text}\n\nСинопсис:\n{synopsis_red}"
+                user_message = f"Thumbnail reference text:\n{thumbnail_text}\n\nStory synopsis:\n{synopsis_red}"
                 
                 # Отправляем запрос к Claude с streaming
                 stream = client.messages.create(
@@ -1729,7 +1729,7 @@ def create_reply_to_comment(user_comment):
         client = anthropic.Anthropic(api_key=api_key)
         
         # Объединяем транскрипцию и комментарий пользователя
-        combined_message = f"Транскрипция видео:\n{transcript}\n\nКомментарий пользователя:\n{user_comment}"
+        combined_message = f"Transcript video:\n{transcript}\n\nUser's comment:\n{user_comment}"
         
         # Попытки отправки запроса с обработкой rate limit
         max_retries = 5
