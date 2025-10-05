@@ -1731,34 +1731,56 @@ def copy_button_with_char_count(text: str, key: str, in_header: bool = False):
     with col2:
         button_key = f"copy_btn_{key}"
         
-        # Проверяем, была ли недавно нажата кнопка
-        if st.session_state.get(f"{button_key}_clicked", False):
-            # Показываем галочку
-            if st.button("✔️", key=button_key, help="Скопировано!", use_container_width=True):
-                pass
-            # Сбрасываем состояние через JavaScript
-            components.html(
-                f"""
-                <script>
-                setTimeout(function() {{
-                    // Trigger rerun to reset button
-                    window.parent.postMessage({{type: 'streamlit:rerun'}}, '*');
-                }}, 2000);
-                </script>
-                """,
-                height=0
-            )
-            st.session_state[f"{button_key}_clicked"] = False
-        else:
-            # Обычная кнопка копирования
-            if st.button("📋", key=button_key, help="Копировать в буфер обмена", use_container_width=True):
-                # Копируем текст через JavaScript
-                js_code = f"""
-                <script>
-                const text = {json.dumps(text)};
-                navigator.clipboard.writeText(text).then(function() {{
-                    console.log('Copied to clipboard');
-                }}).catch(function(err) {{
+        # Генерируем уникальный ID для JavaScript
+        js_id = f"copy_{key}_{hash(text) % 1000000}"
+        
+        # Создаём HTML-кнопку с JavaScript для копирования
+        html_code = f"""
+        <style>
+            #{js_id}_btn {{
+                background-color: #ffffff;
+                border: 1px solid #d3d3d3;
+                border-radius: 0.25rem;
+                padding: 0.25rem 0.75rem;
+                font-size: 1rem;
+                cursor: pointer;
+                width: 100%;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s;
+            }}
+            #{js_id}_btn:hover {{
+                background-color: #f0f2f6;
+                border-color: #1f77b4;
+            }}
+            #{js_id}_btn.copied {{
+                background-color: #d4edda;
+                border-color: #28a745;
+            }}
+        </style>
+        <button id="{js_id}_btn" title="Копировать в буфер обмена">📋</button>
+        <script>
+        (function() {{
+            const btn = document.getElementById('{js_id}_btn');
+            const text = {json.dumps(text)};
+            
+            btn.addEventListener('click', async function() {{
+                try {{
+                    // Пробуем современный API
+                    await navigator.clipboard.writeText(text);
+                    // Меняем иконку на галочку
+                    btn.innerHTML = '✔️';
+                    btn.classList.add('copied');
+                    btn.title = 'Скопировано!';
+                    
+                    // Возвращаем исходную иконку через 2 секунды
+                    setTimeout(() => {{
+                        btn.innerHTML = '📋';
+                        btn.classList.remove('copied');
+                        btn.title = 'Копировать в буфер обмена';
+                    }}, 2000);
+                }} catch(err) {{
                     // Fallback для старых браузеров
                     const textArea = document.createElement("textarea");
                     textArea.value = text;
@@ -1768,19 +1790,32 @@ def copy_button_with_char_count(text: str, key: str, in_header: bool = False):
                     document.body.appendChild(textArea);
                     textArea.focus();
                     textArea.select();
+                    
                     try {{
-                        document.execCommand('copy');
-                        console.log('Copied using fallback');
-                    }} catch (err) {{
-                        console.error('Failed to copy: ', err);
+                        const successful = document.execCommand('copy');
+                        if (successful) {{
+                            btn.innerHTML = '✔️';
+                            btn.classList.add('copied');
+                            btn.title = 'Скопировано!';
+                            
+                            setTimeout(() => {{
+                                btn.innerHTML = '📋';
+                                btn.classList.remove('copied');
+                                btn.title = 'Копировать в буфер обмена';
+                            }}, 2000);
+                        }}
+                    }} catch(err) {{
+                        console.error('Failed to copy:', err);
                     }}
+                    
                     document.body.removeChild(textArea);
-                }});
-                </script>
-                """
-                components.html(js_code, height=0)
-                st.session_state[f"{button_key}_clicked"] = True
-                st.rerun()
+                }}
+            }});
+        }})();
+        </script>
+        """
+        
+        components.html(html_code, height=35)
 
 # Функция для создания ответа на комментарий пользователя
 def create_reply_to_comment(user_comment):
