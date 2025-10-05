@@ -1,27 +1,20 @@
-Перепиши этот синопсис и аннотацию, изменив:
-- имена персонажей;
-- места жизни, работы, происходящих событий;
-- бренды и названия;
-- другие важные детали истории с сохранением характера сюжетной линии
-- если главный герой (именно сам рассказчик истории!) мужчина, измени его в этом варианте на женщину, но следи, чтобы всё, что происходит с главным героем, не противоречило его полу.
+Rewrite this synopsis and annotation, changing:
+- character names;
+- places of residence, work, occurring events;
+- brands and titles;
+- other important story details while preserving the nature of the storyline
+- if the main character (specifically the narrator of the story!) is a man, change him to a woman in this version, but make sure that everything that happens to the main character doesn't contradict their gender.
 
-ВАЖНО! Не меняй объём синопсиса!
+IMPORTANT! Don't change the synopsis volume!
+IMPORTANT! Don't shorten plot-significant events!
+IMPORTANT! The new synopsis should be such that all its events could actually happen in the USA nowadays. The reader shouldn't get a feeling of falseness, artificiality or fabrication of the plot.
+IMPORTANT! If the original contains any data that doesn't fit the USA, it needs to be changed to match USA realities (prices, currency, legal aspects, etc.).
+IMPORTANT! All names in the synopsis should be American.
+IMPORTANT! Since the events in the synopsis take place in the USA, you need to consider the peculiarities of life in this country and the regulatory framework both of the state as a whole and of individual states where the events occur. The story events should take place in the USA and be understandable and logical to the average American, and the details (legislative features, everyday life, mentality) should be applicable to the USA.
+IMPORTANT! The main heroine is always a positive character, she always comes out victorious in difficult life situations.
+IMPORTANT! The structure, presentation and style of the synopsis should not be violated.
 
-ВАЖНО! Не сокращай сюжетно-знчимые события!
-
-ВАЖНО! Новый синопсис должен получиться такой, все события которого могли действительно произойти в США в наши дни. У читателя не должно возникнуть ощущения фальши, наигранности или выдуманности сюжета.
-
-ВАЖНО! Если в оригинале есть какие-то данные, которые не подходят для США, нужно изменить их на подходящие под реалии США (цены, валюту, правовые аспекты и пр.).
-
-ВАЖНО! Все имена в синопсисе должны быть американские.
-
-ВАЖНО! Так как события в синопсисе происходят в США, нужно учитывать особенности жизни в этой стране и нормативно-правовую базу как государства в целом, так и отдельных штатов, в которых происходят события. События истории должны происходить в США и быть понятными и логичными среднестатистическому американцу, а детали (особенности законодательства, быта, менталитет) должны быть применимы к США.
-
-ВАЖНО! Главная героиня всегда положительный персонаж, она всегда выходит победителем в сложных жизненных ситуациях.
-
-ВАЖНО! Структура, подача и стиль синопсиса не должны быть нарушены.
-
-Имя для главной героини выбирай РАНДОМНО из этого списка:
+Choose a name for the main heroine RANDOMLY from this list:
 Sofia
 Allison
 Peyton

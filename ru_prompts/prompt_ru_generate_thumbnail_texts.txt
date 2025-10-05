@@ -1,13 +1,14 @@
-Based on the Thumbnail reference text (example) and story synopsis, create 15 Thumbnail text variations that match the synopsis and annotation content with varying degrees of similarity to the example (Thumbnail reference) and meet the requirements:
-- Thumbnail texts must be written in American English;
-- each Thumbnail text length must not exceed 235 characters including spaces and punctuation;
-- each Thumbnail text length must not be less than 210 characters including spaces and punctuation;
-- all Thumbnail texts must be written in UPPER CASE (capital letters - Caps Lock);
-- each Thumbnail text must use direct speech from a story character (you can make it up, but keep it relevant to the synopsis);
-- each Thumbnail text must end with an ellipsis, behind which the main intrigue is hidden;
-Output each Thumbnail text on a separate line without any of your own explanations or additions.
+На основе текста Thumbnail референса (примера) и синопсиса истории создай 15 вариантов текстов Thumbnail, соответствующих содержанию синопсиса и аннотации с разной степенью схожести с примером (Thumbnail референса) и соответствующих требованиям:
+- тексты Thumbnail должны быть написаны на американском английском;
+- длина каждого текста Thumbnail не должна превышать 235 знаков с пробелами и знаками препинания;
+- длина каждого текста Thumbnail не должна быть меньше 210 знаков с пробелами и знаками препинания;
+- все тексты Thumbnail должны быть написаны в верхнем регистре (прописные букв - Caps Lock);
+- в каждом тексте Thumbnail должны использоваться прямая речь персонажа истории (можешь придумать, но с сохранением релевантности с синопсисом);
+- каждый текст Thumbnail должен заканчиваться многоточием, за которым скрывается главная интрига;
 
-Here are examples of good Thumbnail texts from other stories:
+Выведи каждый текст для Thumbnail в отдельной строке без каких-либо своих пояснения и дополнений.
+
+Вот примеры хороших текстов Thumbnail от других историй:
 LEARNED THAT MY MOTHER MADE A WILL LEAVING EVERYTHING TO MY SPOILED BROTHER. SO I CUT ALL TIES AND STOPPED HER FINANCIAL SUPPORT. A MONTH LATER, SHE CALLED ME, "WHERE'S MY MONEY?" NO HELLO, NO HOW ARE YOU. I REPLIED...
 FAMILY UNINVITED ME ON A HOLIDAY TRIP, BUT THEY EXPECTED ME TO BABYSIT THEIR KIDS WHILE THEY CELEBRATED MOM'S BIRTHDAY. SO I TURNED OFF MY PHONE AND WENT ON A TRIP WHILE THEY WERE STANDING WITH THE KIDS AT MY DOOR...
 STEPMOM & DAD WENT ON VACATION WITH THEIR DAUGHTER, LEAVING ME ALONE & LAUGHING AT ME, "YOU'RE NOTHING BUT A FREELOADER, LIVING IN OUR HOUSE LIKE YOU OWN THE PLACE!" SO I MADE SURE THEY DIDN'T COME BACK INTO MY HOUSE...
@@ -377,4 +378,4 @@ MY HUBBY AND HIS MOM WILL FLY FIRST CLASS, WHEREAS HE BOOKED ECONOMY FOR ME ON O
 MY SISTER HUMILIATED ME IN FRONT OF EVERYONE JUST BECAUSE I GAVE HER A $100 BRACELET, "I DON'T NEED SUCH A BEGGARLY GIFT!" MY PARENTS SIDED WITH HER. SO I KEPT QUIET AND LEFT. TWO WEEKS LATER, THEY FOUND OUT I BOUGHT A APARTMENT...
 MOM GAVE ME AN EMPTY BOX FOR MY BIRTHDAY, SAYING, "THE PERFECT GIFT FOR SOMEONE WHO DOES NOTHING FOR HER FAMILY!" SO I FILLED IT WITH ALL THE RECEIPTS I HAD BEEN PAYING FOR YEARS, AND GAVE IT BACK TO HER FOR HER BIRTHDAY...
 
-You must study each Thumbnail text example and use their style, mood, and genre.
+Ты должен изучить каждый пример и использовать их стиль, настроение и жанр.
