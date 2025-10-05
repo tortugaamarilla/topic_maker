@@ -1597,7 +1597,7 @@ def create_comment_on_video():
     """Создает комментарий на основе транскрипции видео"""
     try:
         # Проверяем наличие транскрипции
-        transcript = st.session_state.get('transcript', '')
+        transcript = st.session_state.get('transcript_with_timestamps', '')
         if not transcript:
             return None, "Нет транскрипции для создания комментария"
         
@@ -1816,7 +1816,7 @@ def create_reply_to_comment(user_comment):
     """Создает ответ на комментарий пользователя на основе транскрипции видео"""
     try:
         # Проверяем наличие транскрипции
-        transcript = st.session_state.get('transcript', '')
+        transcript = st.session_state.get('transcript_with_timestamps', '')
         if not transcript:
             return None, "Нет транскрипции для создания ответа"
         
@@ -2836,7 +2836,7 @@ if st.session_state.get('comment_on_video', ''):
 # Обработка нажатия кнопки создания комментария по транскрипции
 if create_comment_on_video_clicked:
     # Проверяем наличие транскрипции
-    if not st.session_state.get('transcript', ''):
+    if not st.session_state.get('transcript_with_timestamps', ''):
         # Если нет транскрипции, проверяем video_id
         if not st.session_state.video_id:
             st.warning("⚠️ Данные о видео не найдены. Пожалуйста, сначала введите ссылку на видео и нажмите 'Получить данные референса'")
@@ -2856,7 +2856,7 @@ if create_comment_on_video_clicked:
                 st.session_state.transcript = transcript if transcript else ""
                 st.session_state.transcript_with_timestamps = transcript_with_timestamps if transcript_with_timestamps else ""
                 
-                if not st.session_state.transcript:
+                if not st.session_state.transcript_with_timestamps:
                     st.error("❌ Не удалось получить транскрипцию видео")
                 else:
                     st.success("✅ Данные о видео получены")
@@ -2942,7 +2942,7 @@ if create_reply_clicked:
         st.warning("⚠️ Пожалуйста, введите комментарий пользователя")
     else:
         # Проверяем наличие транскрипции
-        if not st.session_state.get('transcript', ''):
+        if not st.session_state.get('transcript_with_timestamps', ''):
             # Если нет транскрипции, проверяем video_id
             if not st.session_state.video_id:
                 st.warning("⚠️ Данные о видео не найдены. Пожалуйста, сначала введите ссылку на видео и нажмите 'Получить данные референса'")
@@ -2962,7 +2962,7 @@ if create_reply_clicked:
                     st.session_state.transcript = transcript if transcript else ""
                     st.session_state.transcript_with_timestamps = transcript_with_timestamps if transcript_with_timestamps else ""
                     
-                    if not st.session_state.transcript:
+                    if not st.session_state.transcript_with_timestamps:
                         st.error("❌ Не удалось получить транскрипцию видео")
                     else:
                         st.success("✅ Данные о видео получены")
