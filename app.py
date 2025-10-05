@@ -2806,6 +2806,8 @@ if st.session_state.get('comment_on_video', ''):
         key="comment_on_video_display",
         label_visibility="collapsed"
     )
+    # Добавляем кнопку копирования под полем
+    copy_button_with_char_count(st.session_state.comment_on_video, "comment_on_video")
     
     # Свёрнутый блок с информацией о запросе к API
     if st.session_state.get('api_history_comment_on_video'):
