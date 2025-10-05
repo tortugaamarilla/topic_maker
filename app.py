@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import re
 import os
 import io
@@ -1700,6 +1701,87 @@ def create_comment_on_video():
     except Exception as e:
         return None, f"Ошибка при создании комментария: {str(e)}"
 
+# Функция для копирования текста в буфер обмена с изменением иконки
+def copy_button_with_char_count(text: str, key: str, in_header: bool = False):
+    """
+    Создает кнопку копирования с подсчётом символов
+    
+    Args:
+        text: Текст для копирования
+        key: Уникальный ключ для кнопки
+        in_header: True если кнопка в заголовке, False если под полем
+    """
+    if not text:
+        return
+    
+    # Подсчитываем количество символов
+    char_count = len(text)
+    
+    # Создаём колонки для компактного размещения
+    if in_header:
+        # В заголовке - более компактное размещение
+        col1, col2 = st.columns([8, 2])
+    else:
+        # Под полем - растянутое размещение
+        col1, col2 = st.columns([10, 1])
+    
+    with col1:
+        st.caption(f"📊 Символов: {char_count:,}".replace(',', ' '))
+    
+    with col2:
+        button_key = f"copy_btn_{key}"
+        
+        # Проверяем, была ли недавно нажата кнопка
+        if st.session_state.get(f"{button_key}_clicked", False):
+            # Показываем галочку
+            if st.button("✔️", key=button_key, help="Скопировано!", use_container_width=True):
+                pass
+            # Сбрасываем состояние через JavaScript
+            components.html(
+                f"""
+                <script>
+                setTimeout(function() {{
+                    // Trigger rerun to reset button
+                    window.parent.postMessage({{type: 'streamlit:rerun'}}, '*');
+                }}, 2000);
+                </script>
+                """,
+                height=0
+            )
+            st.session_state[f"{button_key}_clicked"] = False
+        else:
+            # Обычная кнопка копирования
+            if st.button("📋", key=button_key, help="Копировать в буфер обмена", use_container_width=True):
+                # Копируем текст через JavaScript
+                js_code = f"""
+                <script>
+                const text = {json.dumps(text)};
+                navigator.clipboard.writeText(text).then(function() {{
+                    console.log('Copied to clipboard');
+                }}).catch(function(err) {{
+                    // Fallback для старых браузеров
+                    const textArea = document.createElement("textarea");
+                    textArea.value = text;
+                    textArea.style.position = "fixed";
+                    textArea.style.left = "-999999px";
+                    textArea.style.top = "-999999px";
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    try {{
+                        document.execCommand('copy');
+                        console.log('Copied using fallback');
+                    }} catch (err) {{
+                        console.error('Failed to copy: ', err);
+                    }}
+                    document.body.removeChild(textArea);
+                }});
+                </script>
+                """
+                components.html(js_code, height=0)
+                st.session_state[f"{button_key}_clicked"] = True
+                st.rerun()
+
 # Функция для создания ответа на комментарий пользователя
 def create_reply_to_comment(user_comment):
     """Создает ответ на комментарий пользователя на основе транскрипции видео"""
@@ -2045,8 +2127,11 @@ with data_container:
     col_label2, col_field2 = st.columns([1, 4])
     with col_label2:
         st.markdown("**Текст с превью:**")
-    with col_field2:
+        # Добавляем подсчёт и копирование под заголовком
         current_thumbnail = st.session_state.get('thumbnail_text', '')
+        if current_thumbnail:
+            copy_button_with_char_count(current_thumbnail, "thumbnail_text", in_header=True)
+    with col_field2:
         st.text_area(
             "Текст с превью",  # Добавляем непустую метку
             value=current_thumbnail,
@@ -2067,13 +2152,14 @@ with data_container:
             key="timestamps_checkbox"
         )
         st.session_state.show_timestamps = show_timestamps
-    with col_field3:
-        # Выбираем какую версию транскрипции показывать
+        # Добавляем подсчёт и копирование под заголовком
         if show_timestamps:
             current_transcript = st.session_state.get('transcript_with_timestamps', '')
         else:
             current_transcript = st.session_state.get('transcript', '')
-        
+        if current_transcript:
+            copy_button_with_char_count(current_transcript, f"transcript_{show_timestamps}", in_header=True)
+    with col_field3:
         st.text_area(
             "Транскрипция",  # Добавляем непустую метку
             value=current_transcript,
@@ -2103,6 +2189,8 @@ if st.session_state.get('annotation_orig', ''):
         key="annotation_orig_display",
         label_visibility="collapsed"
     )
+    # Добавляем кнопку копирования под полем
+    copy_button_with_char_count(st.session_state.annotation_orig, "annotation_orig")
     
     # Свёрнутый блок с информацией о запросе к API
     if st.session_state.get('api_history_annotation_orig'):
@@ -2197,6 +2285,8 @@ if st.session_state.get('synopsis_orig', ''):
         key="synopsis_orig_display",
         label_visibility="collapsed"
     )
+    # Добавляем кнопку копирования под полем
+    copy_button_with_char_count(st.session_state.synopsis_orig, "synopsis_orig")
     
     # Свёрнутый блок с информацией о запросе к API
     if st.session_state.get('api_history_synopsis_orig'):
@@ -2286,6 +2376,8 @@ if st.session_state.get('synopsis_red', ''):
         key="synopsis_red_display",
         label_visibility="collapsed"
     )
+    # Добавляем кнопку копирования под полем
+    copy_button_with_char_count(st.session_state.synopsis_red, "synopsis_red")
     
     # Свёрнутый блок с информацией о запросе к API
     if st.session_state.get('api_history_synopsis_red'):
@@ -2495,6 +2587,8 @@ if st.session_state.get('scenario', ''):
         key="scenario_display",
         label_visibility="collapsed"
     )
+    # Добавляем кнопку копирования под полем
+    copy_button_with_char_count(st.session_state.scenario, "scenario")
     
     # Свёрнутый блок с информацией о запросе к API
     if st.session_state.get('api_history_scenario'):
@@ -2588,6 +2682,8 @@ if st.session_state.get('summary', ''):
         key="summary_display",
         label_visibility="collapsed"
     )
+    # Добавляем кнопку копирования под полем
+    copy_button_with_char_count(st.session_state.summary, "summary")
     
     # Свёрнутый блок с информацией о запросе к API
     if st.session_state.get('api_history_summary'):
@@ -2778,6 +2874,8 @@ if st.session_state.get('reply_to_comment', ''):
         height=200,
         label_visibility="collapsed"
     )
+    # Добавляем кнопку копирования под полем
+    copy_button_with_char_count(st.session_state.reply_to_comment, "reply_to_comment")
     
     # Свёрнутый блок с информацией о запросе к API
     if st.session_state.get('api_history_reply_to_comment'):
