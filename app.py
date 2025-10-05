@@ -1750,7 +1750,7 @@ def copy_button_with_char_count(text: str, key: str, in_header: bool = False):
             .copy-btn {{
                 background: none;
                 border: none;
-                padding: 0 0.25rem;
+                padding: 2px 0.25rem 0 0.25rem;
                 font-size: 1.25rem;
                 cursor: pointer;
                 outline: none;
