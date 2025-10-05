@@ -804,7 +804,7 @@ def get_thumbnail_text(video_id):
             with open("prompt_get_thumbnail_text.txt", "r", encoding="utf-8") as file:
                 prompt_text = file.read()
         except FileNotFoundError:
-            prompt_text = "Опишите текст, который вы видите на этом изображении превью YouTube видео. Выпишите весь текст точно как он написан."
+            return "Не найден файл prompt_get_thumbnail_text.txt"
         
         # Инициализируем клиент Claude
         if "ANTHROPIC_API_KEY" not in st.secrets:
