@@ -1,1 +1,1 @@
-Reply to this User's comment (in the commenter's and Transcript's video language) on the video, whose content you can understand from the Transcript video, with a question to the commenter (very briefly and in the commenter's style).
+Reply to this User's comment on a video, whose content you can understand from the Video transcript, with a question to the commenter (very briefly and in the commenter's style). The language of the reply should match the language of the Video transcript.

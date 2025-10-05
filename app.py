@@ -1840,7 +1840,7 @@ def create_reply_to_comment(user_comment):
         client = anthropic.Anthropic(api_key=api_key)
         
         # Объединяем транскрипцию и комментарий пользователя
-        combined_message = f"Transcript video:\n{transcript}\n\nUser's comment:\n{user_comment}"
+        combined_message = f"Video transcript:\n{transcript}\n\nUser's comment:\n{user_comment}"
         
         # Попытки отправки запроса с обработкой rate limit
         max_retries = 5
