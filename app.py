@@ -2526,6 +2526,8 @@ if st.session_state.get('thumbnail_variants', ''):
         key="thumbnail_variants_display",
         label_visibility="collapsed"
     )
+    # Добавляем кнопку копирования под полем
+    copy_button_with_char_count(st.session_state.thumbnail_variants, "thumbnail_variants")
     
     # Свёрнутый блок с информацией о запросе к API
     if st.session_state.get('api_history_thumbnail_variants'):

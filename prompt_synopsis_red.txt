@@ -6,6 +6,7 @@ Rewrite this synopsis and annotation, changing:
 - if the main character (specifically the narrator of the story!) is a man, change him to a woman in this version, but make sure that everything that happens to the main character doesn't contradict their gender.
 
 IMPORTANT! Don't change the synopsis volume!
+IMPORTANT! The language of the synopsis must remain Russian.
 IMPORTANT! Don't shorten plot-significant events!
 IMPORTANT! The new synopsis should be such that all its events could actually happen in the USA nowadays. The reader shouldn't get a feeling of falseness, artificiality or fabrication of the plot.
 IMPORTANT! If the original contains any data that doesn't fit the USA, it needs to be changed to match USA realities (prices, currency, legal aspects, etc.).
