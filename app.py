@@ -154,8 +154,11 @@ class ProxyManager:
         logger.info(f"Прокси {self.get_proxy_info(index)} успешно использован")
     
     def get_all_proxies(self) -> List[Tuple[str, int]]:
-        """Возвращает список всех прокси с их индексами"""
-        return [(self.get_proxy_url(i), i) for i in range(len(self.proxies))]
+        """Возвращает список всех прокси с их индексами в случайном порядке"""
+        # Создаем список индексов и перемешиваем их
+        indices = list(range(len(self.proxies)))
+        random.shuffle(indices)
+        return [(self.get_proxy_url(i), i) for i in indices]
     
     def shuffle_proxies(self):
         """Перемешивает список прокси для рандомизации"""
@@ -2896,7 +2899,7 @@ with st.form("reply_to_comment_form"):
     )
     
     # Кнопка создания ответа внутри формы
-    create_reply_clicked = st.form_submit_button("Создать")
+    create_reply_clicked = st.form_submit_button("Написать ответ на комментарий пользователя")
 
 # Поле для отображения ответа (показываем всегда, если есть данные)
 if st.session_state.get('reply_to_comment', ''):
