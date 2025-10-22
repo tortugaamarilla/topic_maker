@@ -1,0 +1,79 @@
+Памятка по работе с сервером
+
+ssh root@147.93.94.184
+xtxg7#ejtiTd8&reWtyr&d6fu
+
+Password streamlitapp:
+RCTe4&BUxeru7SE
+http://147.93.94.184/
+
+Обновление приложения после изменений:
+Win+X >> Windows PowerShell (Administrator)
+su - streamlitapp
+cd ~/app
+git pull
+exit
+sudo systemctl restart streamlit
+
+Если обновили зависимости (requirements.txt):
+su - streamlitapp
+cd ~/app
+source venv/bin/activate
+git pull
+pip install --upgrade -r requirements.txt
+deactivate
+exit
+sudo systemctl restart streamlit
+
+Просмотр логов при проблемах:
+journalctl -u streamlit -n 50 --no-pager
+
+
+ssh streamlitapp@147.93.94.184
+
+
+http://147.93.94.184 (порт 80)?
+http://147.93.94.184:8501 (порт 8501)?
+
+Переключение пользователя:
+su - streamlitapp
+
+Перейти в домашнюю директорую. Результат: переходите в /home/streamlitapp/app, где лежит ваше приложение:
+cd ~/app
+
+git pull
+
+Выполнить скрипт в текущей оболочке (venv/bin/activate - скрипт активации виртуального окружения Python):
+source venv/bin/activate  # активировать venv
+
+Выходит из сессии пользователя streamlitapp. Результат: возвращаетесь к предыдущему пользователю (обычно root):
+pip install -r requirements.txt  # обновить зависимости, если есть новые
+
+exit
+
+Останавливает запущенное приложение, запускает его заново с обновлённым кодом, применяет все изменения из git pull (sudo - выполнить с правами администратора, systemctl - менеджер системных служб, restart - команда перезапуска, streamlit - имя вашей службы):
+sudo systemctl restart streamlit
+
+Проверка после обновления:
+После sudo systemctl restart streamlit проверьте статус:
+sudo systemctl status streamlit
+
+Зачем нужна каждая команда:
+
+Переключение на streamlitapp - безопасность (не работаем под root)
+git pull - получаем новый код
+venv - изолируем зависимости проекта
+pip install - обновляем библиотеки, если добавились новые
+restart - перезапускаем приложение с новым кодом
+
+Без перезапуска приложение продолжит работать со старым кодом из памяти!
+
+Ctrl + O - сохранить файл
+Enter - подтвердить имя файла
+Ctrl + X - выйти из редактора
+
+Или можно сделать всё одной командой:
+
+Ctrl + X - выйти
+Y - подтвердить сохранение
+Enter - подтвердить имя файла

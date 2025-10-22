@@ -1,0 +1,1 @@
+Recognize the text in the image and return it to me in a single line while preserving the original punctuation, capitalization, and all special characters used in the text. Pay special attention to the $ sign - it should not be written as S. Don't do anything with the text - it must match the original in the image letter for letter!
